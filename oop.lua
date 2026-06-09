@@ -48,11 +48,68 @@ local function _addConn(conn)
     table.insert(_moveState.connections, conn)
 end
 
+local function _doMove(hrp, humanoid, moveType, targetCF, targetPos, speed, arriveRadius, onArrive, config)
+    if moveType == "TP" then
+        hrp.CFrame = targetCF
+        task.defer(function()
+            if onArrive then pcall(onArrive) end
+            _cleanupMove()
+        end)
+
+    elseif moveType == "Tween" then
+        local tweenTime = (speed <= 1 and speed or 1 / speed * (hrp.Position - targetPos).Magnitude)
+        tweenTime = math.clamp(tweenTime, 0.05, 60)
+
+        local tween = TweenService:Create(
+            hrp,
+            TweenInfo.new(tweenTime, Enum.EasingStyle.Linear),
+            { CFrame = targetCF }
+        )
+
+        pcall(function()
+            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        end)
+
+        tween.Completed:Connect(function()
+            if not _moveState.active then return end
+            pcall(function()
+                humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end)
+            if onArrive then pcall(onArrive) end
+            _cleanupMove()
+        end)
+
+        tween:Play()
+
+    elseif moveType == "Walk" then
+        humanoid.WalkSpeed = speed
+        humanoid:MoveTo(targetPos)
+
+        local walkConn
+        walkConn = RunService.Heartbeat:Connect(function()
+            if not _moveState.active then return end
+            local dist = (hrp.Position - targetPos).Magnitude
+            if dist <= arriveRadius then
+                if onArrive then task.defer(pcall, onArrive) end
+                _cleanupMove()
+            end
+        end)
+        _addConn(walkConn)
+
+        local mtConn
+        mtConn = humanoid.MoveToFinished:Connect(function(reached)
+            if not _moveState.active then return end
+            if reached then
+                if onArrive then task.defer(pcall, onArrive) end
+            end
+            _cleanupMove()
+        end)
+        _addConn(mtConn)
+    end
+end
+
 function Library:Move(config)
     config = config or {}
-
-    _cleanupMove()
-    _moveState.active = true
 
     local player = Players.LocalPlayer
     local character = player.Character or player.CharacterAdded:Wait()
@@ -61,7 +118,6 @@ function Library:Move(config)
 
     if not hrp or not humanoid then
         warn("[Library:Move] Missing HumanoidRootPart or Humanoid")
-        _cleanupMove()
         return
     end
 
@@ -69,9 +125,11 @@ function Library:Move(config)
     local targetPos = targetCF.Position
     local speed = config.Speed or 50
     local arriveRadius = config.ArriveRadius or 3
-    local noclip = config.AntiFall or false
-    local antiFall = config.AntiFall or false
     local onArrive = config.OnArrive
+
+    local safeDistance = config.SafeDistance
+    local safeEnabled = safeDistance and safeDistance.Enabled
+    local safeRadius = safeDistance and safeDistance.Distance or 0
 
     local baseType = config.Type or "TP"
     local moveType = baseType
@@ -83,7 +141,62 @@ function Library:Move(config)
         end
     end
 
-    if antiFall then
+    if safeEnabled then
+        local dist = (hrp.Position - targetPos).Magnitude
+        if dist <= safeRadius then
+            local safeConn
+            safeConn = RunService.Heartbeat:Connect(function()
+                local char = player.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if not root then return end
+
+                local currentDist = (root.Position - targetPos).Magnitude
+                if currentDist > safeRadius then
+                    safeConn:Disconnect()
+
+                    _cleanupMove()
+                    _moveState.active = true
+
+                    if config.AntiFall then
+                        pcall(function()
+                            local hum = findFirstChildOfClass(char, "Humanoid")
+                            if hum then
+                                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+                            end
+                        end)
+                    end
+
+                    if config.Noclip then
+                        local noclipConn = RunService.Stepped:Connect(function()
+                            if not _moveState.active then return end
+                            for _, part in ipairs(char:GetDescendants()) do
+                                if part:IsA("BasePart") then
+                                    part.CanCollide = false
+                                end
+                            end
+                        end)
+                        _addConn(noclipConn)
+                    end
+
+                    local hum = findFirstChildOfClass(char, "Humanoid")
+                    if root and hum then
+                        local diedConn = hum.Died:Connect(function()
+                            _cleanupMove()
+                        end)
+                        _addConn(diedConn)
+                        _doMove(root, hum, moveType, targetCF, targetPos, speed, arriveRadius, onArrive, config)
+                    end
+                end
+            end)
+            return
+        end
+    end
+
+    _cleanupMove()
+    _moveState.active = true
+
+    if config.AntiFall then
         pcall(function()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
@@ -107,66 +220,7 @@ function Library:Move(config)
     end)
     _addConn(diedConn)
 
-    if moveType == "TP" then
-        hrp.CFrame = targetCF
-        task.defer(function()
-            if onArrive then pcall(onArrive) end
-            _cleanupMove()
-        end)
-
-    elseif moveType == "Tween" then
-        local tweenTime = (speed <= 1 and speed or 1 / speed * (hrp.Position - targetPos).Magnitude)
-        tweenTime = math.clamp(tweenTime, 0.05, 60)
-
-        local tween = TweenService:Create(
-            hrp,
-            TweenInfo.new(tweenTime, Enum.EasingStyle.Linear),
-            { CFrame = targetCF }
-        )
-
-        local prevState
-        pcall(function()
-            prevState = humanoid:GetState()
-            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-        end)
-
-        tween.Completed:Connect(function()
-            if not _moveState.active then return end
-            pcall(function()
-                humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            end)
-            if onArrive then pcall(onArrive) end
-            _cleanupMove()
-        end)
-
-        tween:Play()
-
-    elseif moveType == "Walk" then
-        humanoid.WalkSpeed = speed
-        humanoid:MoveTo(targetPos)
-
-        local walkConn
-        walkConn = RunService.Heartbeat:Connect(function()
-            if not _moveState.active then return end
-
-            local dist = (hrp.Position - targetPos).Magnitude
-            if dist <= arriveRadius then
-                if onArrive then task.defer(pcall, onArrive) end
-                _cleanupMove()
-            end
-        end)
-        _addConn(walkConn)
-
-        local mtConn
-        mtConn = humanoid.MoveToFinished:Connect(function(reached)
-            if not _moveState.active then return end
-            if reached then
-                if onArrive then task.defer(pcall, onArrive) end
-            end
-            _cleanupMove()
-        end)
-        _addConn(mtConn)
-    end
+    _doMove(hrp, humanoid, moveType, targetCF, targetPos, speed, arriveRadius, onArrive, config)
 end
 
 function Library:StopMove()
