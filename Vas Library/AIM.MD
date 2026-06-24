@@ -1,7 +1,3 @@
-```markdown
-# aimLibrary
-
-A lightweight, performant Roblox aimbot library with FOV targeting, smoothness, prediction, part distribution, team/visibility checks, and integration with espLibrary.
 
 ---
 
