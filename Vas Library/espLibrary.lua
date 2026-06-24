@@ -376,9 +376,13 @@ local function renderPlayer(self, player, objects)
     if not (character and torso) then
         for _, obj in next, objects do
             if type(obj) == "table" then
-                for _, line in next, obj do line.Visible = false end
-            else
+                for _, line in next, obj do
+                    if line.Visible ~= nil then line.Visible = false end
+                end
+            elseif obj.Visible ~= nil then
                 obj.Visible = false
+            elseif obj.Enabled ~= nil then
+                obj.Enabled = false
             end
         end
         return
