@@ -1,8 +1,3 @@
---[[
-    made by siper#9938 and mickey#5612
-    improved: performance, code quality, features
-]]
-
 local espLibrary = {
     instances = {},
     espCache = {},
@@ -370,19 +365,23 @@ function espLibrary:Unload()
     runService:UnbindFromRenderStep("esp_rendering")
 end
 
-local function renderPlayer(self, player, objects)
+local function setHidden(obj)
+    if obj.Visible ~= nil then
+        obj.Visible = false
+    elseif obj.Enabled ~= nil then
+        obj.Enabled = false
+    end
+end
+
+local function renderPlayer(self, player, objects, mouseLocation)
     local character, torso = self.getCharacter(player)
 
     if not (character and torso) then
         for _, obj in next, objects do
             if type(obj) == "table" then
-                for _, line in next, obj do
-                    if line.Visible ~= nil then line.Visible = false end
-                end
-            elseif obj.Visible ~= nil then
-                obj.Visible = false
-            elseif obj.Enabled ~= nil then
-                obj.Enabled = false
+                for _, line in next, obj do setHidden(line) end
+            else
+                setHidden(obj)
             end
         end
         return
@@ -489,7 +488,7 @@ local function renderPlayer(self, player, objects)
     objects.line.Color        = color or o.tracerColor
     objects.line.Transparency = o.tracerTransparency
     objects.line.From =
-        origin == "Mouse"  and userInputService:GetMouseLocation() or
+        origin == "Mouse"  and (mouseLocation or userInputService:GetMouseLocation()) or
         origin == "Top"    and vector2New(viewportSize.X * 0.5, 0) or
                                vector2New(viewportSize.X * 0.5, viewportSize.Y)
     objects.line.To = torsoPos2
@@ -554,8 +553,10 @@ function espLibrary:Load(renderValue)
     end
 
     runService:BindToRenderStep("esp_rendering", renderValue or (Enum.RenderPriority.Camera.Value + 1), function()
+        local mouseLocation = self.options.tracerOrigin == "Mouse" and userInputService:GetMouseLocation() or nil
+
         for player, objects in next, self.espCache do
-            renderPlayer(self, player, objects)
+            renderPlayer(self, player, objects, mouseLocation)
         end
 
         for player, highlight in next, self.chamsCache do
