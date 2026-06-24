@@ -366,10 +366,9 @@ function espLibrary:Unload()
 end
 
 local function setHidden(obj)
-    if obj.Visible ~= nil then
-        obj.Visible = false
-    elseif obj.Enabled ~= nil then
-        obj.Enabled = false
+    local ok = pcall(function() obj.Visible = false end)
+    if not ok then
+        pcall(function() obj.Enabled = false end)
     end
 end
 
