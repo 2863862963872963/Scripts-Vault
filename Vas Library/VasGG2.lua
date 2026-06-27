@@ -8,6 +8,7 @@ getgenv().VasGG = VasGG
 
 local Drawing = Drawing
 local cam = workspace.CurrentCamera
+local hasLineOfSight
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -43,12 +44,14 @@ VasGG.Options = {
 	HighlightOutlineTransparency = 0,
 	HighlightDepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
 	Aimbot = false,
+	AimMode = "Hold",
 	AimKey = Enum.UserInputType.MouseButton2,
 	AimPart = "Head",
 	AimFOV = 100,
 	AimSmoothness = 0.15,
 	AimTeamCheck = false,
 	ShowFOVCircle = true,
+	WallCheck = false,
 }
 
 local function newDrawing(class, props)
@@ -194,6 +197,10 @@ function VasGG:Update()
 	end
 
 	local part = charOrModel:FindFirstChild("HumanoidRootPart") or root
+	if opt.WallCheck and not hasLineOfSight(part.Position, charOrModel) then
+		self:HideAll()
+		return
+	end
 	local x, y, w, h, onScreen = getWH(part)
 	if not onScreen then
 		self:HideAll()
@@ -402,6 +409,9 @@ end
 local fovCircle = newDrawing("Circle", {Visible = false, Thickness = 1, Color = Color3.fromRGB(255,255,255), Filled = false, NumSides = 48})
 
 local function isHolding()
+	if VasGG.Options.AimMode == "Always" then
+		return true
+	end
 	if typeof(VasGG.Options.AimKey) == "EnumItem" then
 		if VasGG.Options.AimKey.EnumType == Enum.UserInputType then
 			return UserInputService:IsMouseButtonPressed(VasGG.Options.AimKey)
@@ -412,11 +422,23 @@ local function isHolding()
 	return false
 end
 
+function hasLineOfSight(targetPos, targetModel)
+	local origin = cam.CFrame.Position
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	rayParams.IgnoreWater = true
+	local result = workspace:Raycast(origin, (targetPos - origin), rayParams)
+	if not result then return true end
+	if targetModel and result.Instance:IsDescendantOf(targetModel) then return true end
+	return false
+end
+
 local function getAimPart(obj)
 	local root, _, _, charOrModel = obj:GetRootAndHealth()
 	if not root then return nil end
 	local part = charOrModel:FindFirstChild(VasGG.Options.AimPart) or root
-	return part
+	return part, charOrModel
 end
 
 local function getBestTarget()
@@ -427,10 +449,10 @@ local function getBestTarget()
 		if obj.Type == "Player" and opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then
 			continue
 		end
-		local part = getAimPart(obj)
+		local part, model = getAimPart(obj)
 		if part then
 			local screenPos, vis = cam:WorldToViewportPoint(part.Position)
-			if vis then
+			if vis and (not opt.WallCheck or hasLineOfSight(part.Position, model)) then
 				local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mouseLoc).Magnitude
 				if screenDist < bestDist then
 					bestDist = screenDist
