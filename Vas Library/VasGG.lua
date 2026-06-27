@@ -1,18 +1,19 @@
-if getgenv().ESPLib then
-	pcall(function() getgenv().ESPLib.Destroy() end)
+if getgenv().VasGG then
+	pcall(function() getgenv().VasGG.Destroy() end)
 end
 
-local ESPLib = {}
-ESPLib.__index = ESPLib
-getgenv().ESPLib = ESPLib
+local VasGG = {}
+VasGG.__index = VasGG
+getgenv().VasGG = VasGG
 
 local Drawing = Drawing
 local cam = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
 
-ESPLib.Options = {
+VasGG.Options = {
 	Enabled = true,
 	TeamCheck = false,
 	MaxDistance = 1000,
@@ -32,6 +33,22 @@ ESPLib.Options = {
 	HealthBarWidth = 4,
 	Tracking = false,
 	TrackingColor = Color3.fromRGB(255,0,0),
+	DistanceScale = true,
+	ScaleMin = 0.5,
+	ScaleMaxDistance = 500,
+	Highlight = false,
+	HighlightFillColor = Color3.fromRGB(255,0,0),
+	HighlightOutlineColor = Color3.fromRGB(255,255,255),
+	HighlightFillTransparency = 0.5,
+	HighlightOutlineTransparency = 0,
+	HighlightDepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+	Aimbot = false,
+	AimKey = Enum.UserInputType.MouseButton2,
+	AimPart = "Head",
+	AimFOV = 100,
+	AimSmoothness = 0.15,
+	AimTeamCheck = false,
+	ShowFOVCircle = true,
 }
 
 local function newDrawing(class, props)
@@ -87,35 +104,36 @@ local CUBE_EDGES = {
 	{1,5},{2,6},{3,7},{4,8},
 }
 
-function ESPLib.new(target, espType)
-	local self = setmetatable({}, ESPLib)
+function VasGG.new(target, espType)
+	local self = setmetatable({}, VasGG)
 	self.Target = target
 	self.Type = espType or "Player"
 	self.Visible = true
 
 	self.Drawings = {
-		Box = newDrawing("Square", {Visible = false, Color = ESPLib.Options.BoxColor, Thickness = ESPLib.Options.BoxThickness, Filled = false}),
+		Box = newDrawing("Square", {Visible = false, Color = VasGG.Options.BoxColor, Thickness = VasGG.Options.BoxThickness, Filled = false}),
 		Corners = {},
 		Cube = {},
-		Tracer = newDrawing("Line", {Visible = false, Color = ESPLib.Options.TracerColor, Thickness = ESPLib.Options.TracerThickness}),
-		Name = newDrawing("Text", {Visible = false, Color = ESPLib.Options.NameColor, Size = 14, Center = true, Outline = true}),
-		Distance = newDrawing("Text", {Visible = false, Color = ESPLib.Options.NameColor, Size = 13, Center = true, Outline = true}),
+		Tracer = newDrawing("Line", {Visible = false, Color = VasGG.Options.TracerColor, Thickness = VasGG.Options.TracerThickness}),
+		Name = newDrawing("Text", {Visible = false, Color = VasGG.Options.NameColor, Size = 14, Center = true, Outline = true}),
+		Distance = newDrawing("Text", {Visible = false, Color = VasGG.Options.NameColor, Size = 13, Center = true, Outline = true}),
 		HealthBarBG = newDrawing("Square", {Visible = false, Color = Color3.new(0,0,0), Filled = true}),
 		HealthBar = newDrawing("Square", {Visible = false, Color = Color3.fromRGB(0,255,0), Filled = true}),
 	}
 	for i = 1, 8 do
-		self.Drawings.Corners[i] = newDrawing("Line", {Visible = false, Color = ESPLib.Options.BoxColor, Thickness = ESPLib.Options.BoxThickness})
+		self.Drawings.Corners[i] = newDrawing("Line", {Visible = false, Color = VasGG.Options.BoxColor, Thickness = VasGG.Options.BoxThickness})
 	end
 	for i = 1, 12 do
-		self.Drawings.Cube[i] = newDrawing("Line", {Visible = false, Color = ESPLib.Options.BoxColor, Thickness = ESPLib.Options.BoxThickness})
+		self.Drawings.Cube[i] = newDrawing("Line", {Visible = false, Color = VasGG.Options.BoxColor, Thickness = VasGG.Options.BoxThickness})
 	end
+	self.HighlightObj = nil
 
-	ESPLib._objects = ESPLib._objects or {}
-	table.insert(ESPLib._objects, self)
+	VasGG._objects = VasGG._objects or {}
+	table.insert(VasGG._objects, self)
 	return self
 end
 
-function ESPLib:GetRootAndHealth()
+function VasGG:GetRootAndHealth()
 	if self.Type == "Player" then
 		local char = self.Target.Character
 		if not char then return nil end
@@ -133,7 +151,7 @@ function ESPLib:GetRootAndHealth()
 	end
 end
 
-function ESPLib:HideAll()
+function VasGG:HideAll()
 	for k, d in pairs(self.Drawings) do
 		if k == "Corners" or k == "Cube" then
 			for _, line in ipairs(d) do line.Visible = false end
@@ -141,10 +159,13 @@ function ESPLib:HideAll()
 			d.Visible = false
 		end
 	end
+	if self.HighlightObj then
+		self.HighlightObj.Enabled = false
+	end
 end
 
-function ESPLib:Update()
-	local opt = ESPLib.Options
+function VasGG:Update()
+	local opt = VasGG.Options
 	if not opt.Enabled or not self.Visible then
 		self:HideAll()
 		return
@@ -165,6 +186,11 @@ function ESPLib:Update()
 	if dist > opt.MaxDistance then
 		self:HideAll()
 		return
+	end
+
+	local scale = 1
+	if opt.DistanceScale then
+		scale = math.clamp(1 - (dist / opt.ScaleMaxDistance), opt.ScaleMin, 1)
 	end
 
 	local part = charOrModel:FindFirstChild("HumanoidRootPart") or root
@@ -192,7 +218,7 @@ function ESPLib:Update()
 				line.From = corners[i][1]
 				line.To = corners[i][2]
 				line.Color = opt.BoxColor
-				line.Thickness = opt.BoxThickness
+				line.Thickness = opt.BoxThickness * scale
 				line.Visible = true
 			end
 		elseif opt.BoxType == "3D" then
@@ -204,7 +230,7 @@ function ESPLib:Update()
 				line.From = pts[edge[1]]
 				line.To = pts[edge[2]]
 				line.Color = opt.BoxColor
-				line.Thickness = opt.BoxThickness
+				line.Thickness = opt.BoxThickness * scale
 				line.Visible = onScreen3D
 			end
 		else
@@ -213,13 +239,28 @@ function ESPLib:Update()
 			d.Box.Position = Vector2.new(x, y)
 			d.Box.Size = Vector2.new(w, h)
 			d.Box.Color = opt.BoxColor
-			d.Box.Thickness = opt.BoxThickness
+			d.Box.Thickness = opt.BoxThickness * scale
 			d.Box.Visible = true
 		end
 	else
 		d.Box.Visible = false
 		for _, l in ipairs(d.Corners) do l.Visible = false end
 		for _, l in ipairs(d.Cube) do l.Visible = false end
+	end
+
+	if opt.Highlight then
+		if not self.HighlightObj or not self.HighlightObj.Parent then
+			self.HighlightObj = Instance.new("Highlight")
+			self.HighlightObj.Parent = charOrModel
+		end
+		self.HighlightObj.FillColor = opt.HighlightFillColor
+		self.HighlightObj.OutlineColor = opt.HighlightOutlineColor
+		self.HighlightObj.FillTransparency = opt.HighlightFillTransparency
+		self.HighlightObj.OutlineTransparency = opt.HighlightOutlineTransparency
+		self.HighlightObj.DepthMode = opt.HighlightDepthMode
+		self.HighlightObj.Enabled = true
+	elseif self.HighlightObj then
+		self.HighlightObj.Enabled = false
 	end
 
 	if opt.Tracer then
@@ -236,8 +277,9 @@ function ESPLib:Update()
 
 	if opt.Name then
 		d.Name.Text = self.Type == "Player" and self.Target.Name or charOrModel.Name
-		d.Name.Position = Vector2.new(x + w/2, y - 16)
+		d.Name.Position = Vector2.new(x + w/2, y - 16 * scale)
 		d.Name.Color = opt.NameColor
+		d.Name.Size = math.floor(14 * scale)
 		d.Name.Visible = true
 	else
 		d.Name.Visible = false
@@ -247,6 +289,7 @@ function ESPLib:Update()
 		d.Distance.Text = string.format("%d studs", dist)
 		d.Distance.Position = Vector2.new(x + w/2, y + h + 2)
 		d.Distance.Color = opt.NameColor
+		d.Distance.Size = math.floor(13 * scale)
 		d.Distance.Visible = true
 	else
 		d.Distance.Visible = false
@@ -254,12 +297,13 @@ function ESPLib:Update()
 
 	if opt.HealthBar and maxHealth > 0 then
 		local pct = math.clamp(health / maxHealth, 0, 1)
-		d.HealthBarBG.Position = Vector2.new(x - opt.HealthBarWidth - 2, y)
-		d.HealthBarBG.Size = Vector2.new(opt.HealthBarWidth, h)
+		local barWidth = opt.HealthBarWidth * scale
+		d.HealthBarBG.Position = Vector2.new(x - barWidth - 2, y)
+		d.HealthBarBG.Size = Vector2.new(barWidth, h)
 		d.HealthBarBG.Visible = true
 
-		d.HealthBar.Position = Vector2.new(x - opt.HealthBarWidth - 2, y + h * (1 - pct))
-		d.HealthBar.Size = Vector2.new(opt.HealthBarWidth, h * pct)
+		d.HealthBar.Position = Vector2.new(x - barWidth - 2, y + h * (1 - pct))
+		d.HealthBar.Size = Vector2.new(barWidth, h * pct)
 		d.HealthBar.Color = Color3.fromHSV(pct * 0.33, 1, 1)
 		d.HealthBar.Visible = true
 	else
@@ -268,7 +312,7 @@ function ESPLib:Update()
 	end
 end
 
-function ESPLib:Remove()
+function VasGG:Remove()
 	for k, d in pairs(self.Drawings) do
 		if k == "Corners" or k == "Cube" then
 			for _, line in ipairs(d) do line:Remove() end
@@ -276,28 +320,31 @@ function ESPLib:Remove()
 			d:Remove()
 		end
 	end
-	for i, obj in ipairs(ESPLib._objects) do
+	if self.HighlightObj then
+		self.HighlightObj:Destroy()
+	end
+	for i, obj in ipairs(VasGG._objects) do
 		if obj == self then
-			table.remove(ESPLib._objects, i)
+			table.remove(VasGG._objects, i)
 			break
 		end
 	end
 end
 
-function ESPLib.AddPlayer(player)
+function VasGG.AddPlayer(player)
 	if player == LocalPlayer then return end
-	return ESPLib.new(player, "Player")
+	return VasGG.new(player, "Player")
 end
 
-function ESPLib.AddPlayers()
-	ESPLib._objects = ESPLib._objects or {}
-	ESPLib._conns = ESPLib._conns or {}
+function VasGG.AddPlayers()
+	VasGG._objects = VasGG._objects or {}
+	VasGG._conns = VasGG._conns or {}
 	for _, plr in ipairs(Players:GetPlayers()) do
-		ESPLib.AddPlayer(plr)
+		VasGG.AddPlayer(plr)
 	end
-	table.insert(ESPLib._conns, Players.PlayerAdded:Connect(ESPLib.AddPlayer))
-	table.insert(ESPLib._conns, Players.PlayerRemoving:Connect(function(plr)
-		for _, obj in ipairs(ESPLib._objects) do
+	table.insert(VasGG._conns, Players.PlayerAdded:Connect(VasGG.AddPlayer))
+	table.insert(VasGG._conns, Players.PlayerRemoving:Connect(function(plr)
+		for _, obj in ipairs(VasGG._objects) do
 			if obj.Target == plr then
 				obj:Remove()
 				break
@@ -306,18 +353,18 @@ function ESPLib.AddPlayers()
 	end))
 end
 
-function ESPLib.AddNPCsByTag(tag)
+function VasGG.AddNPCsByTag(tag)
 	local CollectionService = game:GetService("CollectionService")
-	ESPLib._objects = ESPLib._objects or {}
-	ESPLib._conns = ESPLib._conns or {}
+	VasGG._objects = VasGG._objects or {}
+	VasGG._conns = VasGG._conns or {}
 	for _, model in ipairs(CollectionService:GetTagged(tag)) do
-		ESPLib.new(model, "NPC")
+		VasGG.new(model, "NPC")
 	end
-	table.insert(ESPLib._conns, CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
-		ESPLib.new(model, "NPC")
+	table.insert(VasGG._conns, CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
+		VasGG.new(model, "NPC")
 	end))
-	table.insert(ESPLib._conns, CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
-		for _, obj in ipairs(ESPLib._objects) do
+	table.insert(VasGG._conns, CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
+		for _, obj in ipairs(VasGG._objects) do
 			if obj.Target == model then
 				obj:Remove()
 				break
@@ -326,24 +373,24 @@ function ESPLib.AddNPCsByTag(tag)
 	end))
 end
 
-function ESPLib.Init()
-	ESPLib._objects = ESPLib._objects or {}
-	ESPLib._conn = RunService.RenderStepped:Connect(function()
+function VasGG.Init()
+	VasGG._objects = VasGG._objects or {}
+	VasGG._conn = RunService.RenderStepped:Connect(function()
 		cam = workspace.CurrentCamera
-		for _, obj in ipairs(ESPLib._objects) do
+		for _, obj in ipairs(VasGG._objects) do
 			obj:Update()
 		end
 	end)
 end
 
-function ESPLib.Destroy()
-	if ESPLib._conn then ESPLib._conn:Disconnect() end
-	for _, c in ipairs(ESPLib._conns or {}) do c:Disconnect() end
-	ESPLib._conns = {}
-	for _, obj in ipairs(ESPLib._objects or {}) do
+function VasGG.Destroy()
+	if VasGG._conn then VasGG._conn:Disconnect() end
+	for _, c in ipairs(VasGG._conns or {}) do c:Disconnect() end
+	VasGG._conns = {}
+	for _, obj in ipairs(VasGG._objects or {}) do
 		obj:Remove()
 	end
-	ESPLib._objects = {}
+	VasGG._objects = {}
 	if Drawing.clear then
 		pcall(Drawing.clear)
 	elseif cleardrawcache then
@@ -351,4 +398,82 @@ function ESPLib.Destroy()
 	end
 end
 
-return ESPLib
+
+local fovCircle = newDrawing("Circle", {Visible = false, Thickness = 1, Color = Color3.fromRGB(255,255,255), Filled = false, NumSides = 48})
+
+local function isHolding()
+	if typeof(VasGG.Options.AimKey) == "EnumItem" then
+		if VasGG.Options.AimKey.EnumType == Enum.UserInputType then
+			return UserInputService:IsMouseButtonPressed(VasGG.Options.AimKey)
+		elseif VasGG.Options.AimKey.EnumType == Enum.KeyCode then
+			return UserInputService:IsKeyDown(VasGG.Options.AimKey)
+		end
+	end
+	return false
+end
+
+local function getAimPart(obj)
+	local root, _, _, charOrModel = obj:GetRootAndHealth()
+	if not root then return nil end
+	local part = charOrModel:FindFirstChild(VasGG.Options.AimPart) or root
+	return part
+end
+
+local function getBestTarget()
+	local opt = VasGG.Options
+	local mouseLoc = UserInputService:GetMouseLocation()
+	local best, bestDist = nil, opt.AimFOV
+	for _, obj in ipairs(VasGG._objects or {}) do
+		if obj.Type == "Player" and opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then
+			continue
+		end
+		local part = getAimPart(obj)
+		if part then
+			local screenPos, vis = cam:WorldToViewportPoint(part.Position)
+			if vis then
+				local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mouseLoc).Magnitude
+				if screenDist < bestDist then
+					bestDist = screenDist
+					best = part
+				end
+			end
+		end
+	end
+	return best
+end
+
+function VasGG.AimbotStep()
+	local opt = VasGG.Options
+	if opt.ShowFOVCircle and opt.Aimbot then
+		local mouseLoc = UserInputService:GetMouseLocation()
+		fovCircle.Position = mouseLoc
+		fovCircle.Radius = opt.AimFOV
+		fovCircle.Color = opt.HighlightOutlineColor
+		fovCircle.Visible = true
+	else
+		fovCircle.Visible = false
+	end
+
+	if not opt.Aimbot or not isHolding() then return end
+
+	local targetPart = getBestTarget()
+	if not targetPart then return end
+
+	local targetPos = targetPart.Position
+	local camCF = cam.CFrame
+	local goalCF = CFrame.new(camCF.Position, targetPos)
+	cam.CFrame = camCF:Lerp(goalCF, opt.AimSmoothness)
+end
+
+function VasGG.InitAimbot()
+	VasGG._aimConn = RunService.RenderStepped:Connect(VasGG.AimbotStep)
+end
+
+local _baseDestroy = VasGG.Destroy
+function VasGG.Destroy()
+	if VasGG._aimConn then VasGG._aimConn:Disconnect() end
+	fovCircle.Visible = false
+	_baseDestroy()
+end
+
+return VasGG
