@@ -1,5 +1,10 @@
+if getgenv().ESPLib then
+	pcall(function() getgenv().ESPLib.Destroy() end)
+end
+
 local ESPLib = {}
 ESPLib.__index = ESPLib
+getgenv().ESPLib = ESPLib
 
 local Drawing = Drawing
 local cam = workspace.CurrentCamera
@@ -286,37 +291,39 @@ end
 
 function ESPLib.AddPlayers()
 	ESPLib._objects = ESPLib._objects or {}
+	ESPLib._conns = ESPLib._conns or {}
 	for _, plr in ipairs(Players:GetPlayers()) do
 		ESPLib.AddPlayer(plr)
 	end
-	Players.PlayerAdded:Connect(ESPLib.AddPlayer)
-	Players.PlayerRemoving:Connect(function(plr)
+	table.insert(ESPLib._conns, Players.PlayerAdded:Connect(ESPLib.AddPlayer))
+	table.insert(ESPLib._conns, Players.PlayerRemoving:Connect(function(plr)
 		for _, obj in ipairs(ESPLib._objects) do
 			if obj.Target == plr then
 				obj:Remove()
 				break
 			end
 		end
-	end)
+	end))
 end
 
 function ESPLib.AddNPCsByTag(tag)
 	local CollectionService = game:GetService("CollectionService")
 	ESPLib._objects = ESPLib._objects or {}
+	ESPLib._conns = ESPLib._conns or {}
 	for _, model in ipairs(CollectionService:GetTagged(tag)) do
 		ESPLib.new(model, "NPC")
 	end
-	CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
+	table.insert(ESPLib._conns, CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
 		ESPLib.new(model, "NPC")
-	end)
-	CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
+	end))
+	table.insert(ESPLib._conns, CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
 		for _, obj in ipairs(ESPLib._objects) do
 			if obj.Target == model then
 				obj:Remove()
 				break
 			end
 		end
-	end)
+	end))
 end
 
 function ESPLib.Init()
@@ -331,6 +338,8 @@ end
 
 function ESPLib.Destroy()
 	if ESPLib._conn then ESPLib._conn:Disconnect() end
+	for _, c in ipairs(ESPLib._conns or {}) do c:Disconnect() end
+	ESPLib._conns = {}
 	for _, obj in ipairs(ESPLib._objects or {}) do
 		obj:Remove()
 	end
