@@ -344,6 +344,11 @@ function ESPLib.Destroy()
 		obj:Remove()
 	end
 	ESPLib._objects = {}
+	if Drawing.clear then
+		pcall(Drawing.clear)
+	elseif cleardrawcache then
+		pcall(cleardrawcache)
+	end
 end
 
 return ESPLib
