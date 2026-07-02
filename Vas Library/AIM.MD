@@ -42,9 +42,15 @@ A comprehensive Roblox utility script providing ESP, Aimbot, Triggerbot, Radar, 
 
 ## Configuration
 
+```lua
+local VasGG = loadstring(game:HttpGet("https://raw.githubusercontent.com/2863862963872963/Scripts-Vault/refs/heads/main/Vas%20Library/b.lua"))()
+```
+
 All settings are stored in `VasGG.Options`. Below are the most common ones – see the script for the full list.
 
 ```lua
+local VasGG = loadstring(game:HttpGet("https://raw.githubusercontent.com/2863862963872963/Scripts-Vault/refs/heads/main/Vas%20Library/b.lua"))()
+
 -- Enable / disable the entire system
 VasGG.Options.Enabled = true
 
@@ -89,6 +95,11 @@ VasGG.Options.TriggerbotHitboxes = {"Head", "UpperTorso"}
 VasGG.Options.Radar = false
 VasGG.Options.RadarPosition = Vector2.new(200, 200)
 VasGG.Options.RadarRadius = 75
+
+VasGG.AddPlayers()   -- auto‑adds all players (current + future)
+VasGG.Init()
+VasGG.InitAimbot()   -- if you need aimbot
+
 ```
 
 ---
