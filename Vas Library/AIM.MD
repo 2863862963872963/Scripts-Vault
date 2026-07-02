@@ -1,120 +1,145 @@
+# Vas Library (b.lua)
+
+A comprehensive Roblox utility script providing ESP, Aimbot, Triggerbot, Radar, and other visual enhancements.  
+**For educational purposes only.** Use at your own risk – violates Roblox ToS and may result in account bans.
 
 ---
 
-## Loading
+## Features
+
+### 👁️ ESP
+- **Box**: 2D, 3D, or corner box around targets
+- **Tracer**: Lines from screen edge to target  
+- **Name** & **Distance** display  
+- **HealthBar**: Color‑coded (green→yellow→red)  
+- **Skeleton**: R6/R15 bone rendering  
+- **LookVector**: Head orientation indicator  
+- **Highlight**: Glow effect on target model  
+- **Off‑Screen Indicators**: Arrows for targets outside view  
+
+### 🎯 Aimbot
+- Modes: **Hold** (key) or **Always**  
+- Custom activation key (mouse or keyboard)  
+- Priority: **Mouse** (closest to crosshair), **Distance**, or **Health**  
+- Smooth aiming with configurable speed  
+- FOV circle display  
+- Prediction based on target velocity  
+- Distance‑based offsets  
+- Blacklist (break key) to ignore current target temporarily  
+
+### 🔫 Triggerbot
+- Configurable hit chance threshold (%)  
+- Filter by hitbox (Head, UpperTorso, etc.)  
+- Adjustable firing delay  
+
+### 🗺️ Radar
+- Mini‑radar with adjustable position and radius  
+
+### 🎨 Other
+- Custom crosshair  
+- FOV circle  
+
+---
+
+## Configuration
+
+All settings are stored in `VasGG.Options`. Below are the most common ones – see the script for the full list.
 
 ```lua
-local aimLibrary = loadstring(game:HttpGet(""))()
-aimLibrary:Load() -- or aimLibrary:Load(nil, espLibrary)
-```
+-- Enable / disable the entire system
+VasGG.Options.Enabled = true
 
-Call `:Load()` to start the aim loop. Optionally pass your `espLibrary` instance for better team/visibility integration. Call `:Unload()` to stop.
+-- Team check (skip teammates)
+VasGG.Options.TeamCheck = false
 
----
+-- Maximum detection distance (studs)
+VasGG.Options.MaxDistance = 1000
 
-## Options
+-- ESP toggles
+VasGG.Options.Box = true
+VasGG.Options.BoxType = "2D"          -- "2D", "3D", "Corner"
+VasGG.Options.Tracer = false
+VasGG.Options.Name = true
+VasGG.Options.Distance = true
+VasGG.Options.HealthBar = true
+VasGG.Options.Skeleton = false
+VasGG.Options.Highlight = false
 
-All options live in `aimLibrary.options`. Change them at any time.
+-- Aimbot settings
+VasGG.Options.Aimbot = false
+VasGG.Options.AimMode = "Hold"        -- "Hold" or "Always"
+VasGG.Options.AimKey = Enum.UserInputType.MouseButton2  -- right mouse
+VasGG.Options.AimFOV = 100            -- pixels
+VasGG.Options.AimSmoothness = 0.15    -- 0..1
+VasGG.Options.AimPriority = "Mouse"   -- "Mouse", "Distance", "Health"
+VasGG.Options.AimPrediction = false
+VasGG.Options.AimPredictionFactor = 0.165
 
-### General
+-- Aim part weights (table of {Part, Rate})
+VasGG.Options.AimPartRate = {
+    {Part = "Head", Rate = 70},
+    {Part = "UpperTorso", Rate = 30}
+}
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | bool | `true` | Master toggle |
-| `aimMode` | string | `"Mouse"` (PC) / `"Camera"` (Mobile) | `"Mouse"` or `"Camera"` |
-| `aimPart` | string | `"Head"` | Primary aim part (Head, Torso, HumanoidRootPart, etc.) |
-| `aimPartDistribution` | table | `{ Head = 70, Torso = 30 }` | Weighted random part selection |
-| `aimPartDistributionEnabled` | bool | `false` | Enable weighted random aiming |
-| `aimPartRandomizePerShot` | bool | `false` | Re-randomize part every frame while aiming |
-| `fov` | number | `90` | FOV radius in degrees (0 = unlimited) |
-| `fovVisible` | bool | `false` | Show FOV circle (requires drawing setup) |
-| `smoothness` | number | `10` | Smoothing steps (1 = instant) |
-| `maxSmoothDistance` | number | `200` | Distance threshold for instant aim |
-| `teamCheck` | bool | `true` | Skip teammates |
-| `visibleOnly` | bool | `true` | Only target visible players |
-| `lockTarget` | bool | `false` | Stick to current target until lost |
-| `keyToAim` | Enum.KeyCode\|nil | `nil` | Hold key to aim |
-| `keyToggle` | Enum.KeyCode\|nil | `nil` | Toggle enabled state |
-| `prediction` | bool | `false` | Velocity prediction |
-| `predictionMultiplier` | number | `1` | Prediction strength |
-| `maxDistance` | number | `1000` | Max target distance in studs |
-| `ignoreBlacklist` | bool | `true` | Skip blacklisted players from espLibrary |
-| `ignoreWhitelist` | bool | `false` | Only target whitelisted players from espLibrary |
-| `aimAtDowned` | bool | `false` | Target downed players |
-| `boneNames` | table | `{"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"}` | Fallback part names |
+-- Triggerbot
+VasGG.Options.Triggerbot = false
+VasGG.Options.TriggerbotHitchance = 100
+VasGG.Options.TriggerbotHitboxes = {"Head", "UpperTorso"}
 
-### Integration
-
-The library automatically detects and uses `espLibrary` if passed to `:Load()` for:
-- Better team color detection
-- Consistent visibility checks
-
----
-
-## API
-
-### `:Load(renderPriority?, espLib?)`
-Starts the aim loop. 
-- `renderPriority`: Custom `Enum.RenderPriority` (default: Camera + 2)
-- `espLib`: Your loaded `espLibrary` instance
-
-### `:Unload()`
-Stops the aim loop and cleans up connections.
-
-### `:Toggle()`
-Flips `options.enabled`.
-
-### `:SetOption(key, value)`
-Safe setter that validates the key exists.
-```lua
-aimLibrary:SetOption("fov", 120)
-aimLibrary:SetOption("smoothness", 5)
-aimLibrary:SetOption("prediction", true)
-```
-
-### `:GetTarget()`
-Returns `(player, aimPart)` of the current best target or `(nil, nil)`.
-
-### `:IsMobile()`
-Returns `true` if running on mobile/touch device.
-
----
-
-## Whitelist & Blacklist
-
-Works with `espLibrary`:
-```lua
-espLibrary.whitelist = { "PlayerName" }   -- only aim at these if ignoreWhitelist = true
-espLibrary.blacklist = { "PlayerName" }   -- ignore these if ignoreBlacklist = true
+-- Radar
+VasGG.Options.Radar = false
+VasGG.Options.RadarPosition = Vector2.new(200, 200)
+VasGG.Options.RadarRadius = 75
 ```
 
 ---
 
-## Example
+## API Reference
 
-```lua
-local espLibrary = loadstring(game:HttpGet("ESP_RAW_URL"))()
-local aimLibrary = loadstring(game:HttpGet("AIM_RAW_URL"))()
-
-espLibrary:Load()
-aimLibrary:Load(nil, espLibrary) -- pass espLibrary for best integration
-
-aimLibrary.options.teamCheck = true
-aimLibrary.options.visibleOnly = true
-aimLibrary.options.smoothness = 8
-aimLibrary.options.prediction = true
-aimLibrary.options.aimPartDistributionEnabled = true
-aimLibrary.options.fov = 80
-
--- Toggle with RightShift
-game:GetService("UserInputService").InputBegan:Connect(function(input, gpe)
-    if not gpe and input.KeyCode == Enum.KeyCode.RightShift then
-        aimLibrary:Toggle()
-    end
-end)
-```
+| Method | Parameters | Description |
+|--------|------------|-------------|
+| `VasGG.Init()` | – | Starts the ESP update loop |
+| `VasGG.InitAimbot()` | – | Starts the aimbot loop (optional) |
+| `VasGG.Destroy()` | – | Clears all drawings and disconnects events |
+| `VasGG.AddPlayers()` | – | Adds ESP to all current and future players |
+| `VasGG.AddPlayer(player)` | `player` (Player) | Adds ESP to a single player |
+| `VasGG.AddNPCsByTag(tag)` | `tag` (string) | Adds ESP to models with a specific tag |
+| `VasGG.new(target, espType)` | `target`, `espType` | Creates a new ESP object for a target |
 
 ---
 
-**Note**: This library is designed to work alongside `espLibrary`. While they can be used independently, passing the ESP instance to `:Load()` provides the best consistency for team checks and visibility. 
-```
+## Quick Use
+
+1. **Load the script** into your Roblox executor (e.g., Synapse, Krnl, etc.).
+2. **Add targets** – most games use players:
+   ```lua
+   VasGG.AddPlayers()   -- auto‑adds all players (current + future)
+   ```
+   For NPCs with a specific tag:
+   ```lua
+   VasGG.AddNPCsByTag("Enemy")
+   ```
+3. **Customise options** (as shown above) before calling `Init()`.
+4. **Start the system**:
+   ```lua
+   VasGG.Init()
+   VasGG.InitAimbot()   -- if you need aimbot
+   ```
+5. **Use the defaults** – by default ESP (boxes, names, health, distance) is enabled.  
+   Toggle options anytime; changes apply immediately.
+6. **To stop everything**:
+   ```lua
+   VasGG.Destroy()
+   ```
+
+---
+
+## ⚠️ Disclaimer
+
+This script is provided **solely for educational and research purposes**.  
+Using it in Roblox violates the Terms of Service and can lead to permanent account suspension.  
+The author assumes no responsibility for any consequences arising from its use.
+
+---
+
+*Repository: [Scripts-Vault](https://github.com/2863862963872963/Scripts-Vault)*
