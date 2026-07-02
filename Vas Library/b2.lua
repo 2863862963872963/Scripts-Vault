@@ -853,12 +853,26 @@ function VasGG.AimbotStep()
 
 	currentTarget = targetPart
 	local camCF = cam.CFrame
-	local goalCF = CFrame.new(camCF.Position, targetPos)
 	
-	if opt.AimSmoothness <= 0 then
-		cam.CFrame = goalCF
-	else
-		cam.CFrame = camCF:Lerp(goalCF, opt.AimSmoothness)
+	if opt.AimTargetMode == "Camera" then
+		local goalCF = CFrame.new(camCF.Position, targetPos)
+		if opt.AimSmoothness <= 0 then
+			cam.CFrame = goalCF
+		else
+			cam.CFrame = camCF:Lerp(goalCF, opt.AimSmoothness)
+		end
+	elseif opt.AimTargetMode == "Mouse" then
+		local screenPos, onScreen = cam:WorldToViewportPoint(targetPos)
+		if onScreen and mousemoveabs then
+			local targetMousePos = Vector2.new(screenPos.X, screenPos.Y)
+			if opt.AimSmoothness <= 0 then
+				mousemoveabs(targetMousePos.X, targetMousePos.Y)
+			else
+				local currentMouse = UserInputService:GetMouseLocation()
+				local lerpedMouse = currentMouse:Lerp(targetMousePos, opt.AimSmoothness)
+				mousemoveabs(lerpedMouse.X, lerpedMouse.Y)
+			end
+		end
 	end
 
 	if opt.Triggerbot then
