@@ -71,6 +71,7 @@ VasGG.Options = {
 	AimMode = "Hold", 
 	AimKey = Enum.UserInputType.MouseButton2,
 	AimFOV = 100,
+	FOVPosition = "Mouse", -- Added configuration option: "Mouse" or "Center"
 	AimSmoothness = 0.15,
 	AimTeamCheck = false,
 	ShowFOVCircle = true,
@@ -607,6 +608,7 @@ local fovCircle = newDrawing("Circle", {Visible = false, Thickness = 1, Color = 
 local crosshairHorizontal = newDrawing("Line", {Visible = false, Thickness = 1, Color = Color3.fromRGB(0,255,0)})
 local crosshairVertical = newDrawing("Line", {Visible = false, Thickness = 1, Color = Color3.fromRGB(0,255,0)})
 local radarBackground = newDrawing("Circle", {Visible = false, Filled = true, NumSides = 32})
+local localPlayerRadarBlip = newDrawing("Circle", {Visible = false, Radius = 3, Filled = true, NumSides = 16, Color = Color3.fromRGB(0, 255, 0)})
 
 local shooting = false
 local blacklist = {}
@@ -665,7 +667,7 @@ local function getAimPart(obj)
 end
 
 local function getAimOrigin()
-	if VasGG.Options.AimTargetMode == "Center" then
+	if VasGG.Options.FOVPosition == "Center" then
 		return cam.ViewportSize / 2
 	else
 		return UserInputService:GetMouseLocation()
@@ -764,8 +766,12 @@ function VasGG.AimbotStep()
 		radarBackground.Color = opt.RadarColor
 		radarBackground.Transparency = opt.RadarTransparency
 		radarBackground.Visible = true
+
+		localPlayerRadarBlip.Position = opt.RadarPosition
+		localPlayerRadarBlip.Visible = true
 	else
 		radarBackground.Visible = false
+		localPlayerRadarBlip.Visible = false
 	end
 
 	if opt.Crosshair then
@@ -904,6 +910,7 @@ function VasGG.Destroy()
 	crosshairHorizontal.Visible = false
 	crosshairVertical.Visible = false
 	radarBackground.Visible = false
+	localPlayerRadarBlip.Visible = false
 	_baseDestroy()
 end
 
