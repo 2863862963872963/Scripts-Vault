@@ -1,4 +1,3 @@
-# Vas Library (b.lua)
 
 A comprehensive Roblox utility script providing ESP, Aimbot, Triggerbot, Radar, and other visual enhancements.  
 **For educational purposes only.** Use at your own risk – violates Roblox ToS and may result in account bans.
