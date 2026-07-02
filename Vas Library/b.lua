@@ -35,7 +35,6 @@ VasGG.Options = {
 	ScaleMin = 0.5,
 	ScaleMaxDistance = 500,
 	
-	-- VISUALS
 	Highlight = false,
 	HighlightFillColor = Color3.fromRGB(255,0,0),
 	HighlightOutlineColor = Color3.fromRGB(255,255,255),
@@ -57,21 +56,19 @@ VasGG.Options = {
 	CrosshairSize = 10,
 	CrosshairThickness = 1,
 	
-	-- NEW RADAR VISUAL
-	Radar = false, -- Toggles rendering of the mini standalone map overlay screen
-	RadarPosition = Vector2.new(200, 200), -- Origin center location coordinates for layout panel boundary positioning
-	RadarRadius = 75, -- Circular radius boundary mapping scale limits
-	RadarColor = Color3.fromRGB(0, 0, 0), -- Panel viewport canvas background coloring value
-	RadarTransparency = 0.4, -- Alpha transparency level opacity matrix for standard drawing backgrounds
-	RadarBlipColor = Color3.fromRGB(255, 0, 0), -- Target plot dot coloring indicator
-	RadarScale = 2, -- Relative translation multi-factor translating world space coordinates onto mini grid structures
+	Radar = false, 
+	RadarPosition = Vector2.new(200, 200), 
+	RadarRadius = 75, 
+	RadarColor = Color3.fromRGB(0, 0, 0), 
+	RadarTransparency = 0.4, 
+	RadarBlipColor = Color3.fromRGB(255, 0, 0), 
+	RadarScale = 2, 
 	
-	-- COMBAT
 	Aimbot = false,
 	AimMode = "Hold", 
 	AimKey = Enum.UserInputType.MouseButton2,
 	AimFOV = 100,
-	FOVPosition = "Mouse", -- Added configuration option: "Mouse" or "Center"
+	FOVPosition = "Mouse", 
 	AimSmoothness = 0.15,
 	AimTeamCheck = false,
 	ShowFOVCircle = true,
@@ -86,17 +83,21 @@ VasGG.Options = {
 	AimBreakKey = Enum.KeyCode.E, 
 	AimBreakTime = 1.5, 
 	
-	-- NEW COMBAT FEATURES
-	AimPrediction = false, -- Scales target calculation models using physics delta vectors to predict velocity shifts
-	AimPredictionFactor = 0.165, -- Linear interpolation adjustment variable simulating projection curves over space
-	AimPartRate = { -- Rate system for multi-part distribution profiles based on calculated chance properties
-		{Part = "Head", Rate = 70}, -- 70% targeting chance weight assigned onto tracking structures
-		{Part = "UpperTorso", Rate = 30} -- 30% targeting chance weight assigned onto tracking structures
+	AimPrediction = false, 
+	AimPredictionFactor = 0.165, 
+	AimPartRate = { 
+		{Part = "Head", Rate = 70}, 
+		{Part = "UpperTorso", Rate = 30} 
 	},
 	Triggerbot = false, 
 	TriggerbotDelay = 0,
-	TriggerbotHitchance = 100, -- Accuracy threshold percentile checked prior to shooting triggers firing
-	TriggerbotHitboxes = {"Head", "UpperTorso", "LowerTorso", "Torso"} -- Whitelisted anatomical target targets allowed to bridge verification steps
+	TriggerbotHitchance = 100, 
+	TriggerbotHitboxes = {"Head", "UpperTorso", "LowerTorso", "Torso"},
+
+	TargetingMode = "Blacklist",
+	PlayerList = {},
+	TeamTargetingMode = "Blacklist",
+	TeamList = {}
 }
 
 local function newDrawing(class, props)
@@ -286,7 +287,6 @@ function VasGG:Update()
 		return
 	end
 
-	-- Radar Rendering Logic
 	if opt.Radar then
 		local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 		if localRoot then
@@ -674,6 +674,33 @@ local function getAimOrigin()
 	end
 end
 
+local function isPlayerAllowed(player)
+	local opt = VasGG.Options
+	local isListed = opt.PlayerList[player.UserId] or opt.PlayerList[player.Name] or false
+	
+	if opt.TargetingMode == "Blacklist" then
+		return not isListed
+	elseif opt.TargetingMode == "Whitelist" then
+		return isListed
+	end
+	return true
+end
+
+local function isTeamAllowed(player)
+	local opt = VasGG.Options
+	local teamName = player.Team and player.Team.Name
+	if not teamName then return true end
+	
+	local isListed = opt.TeamList[teamName] or false
+	
+	if opt.TeamTargetingMode == "Blacklist" then
+		return not isListed
+	elseif opt.TeamTargetingMode == "Whitelist" then
+		return isListed
+	end
+	return true
+end
+
 local function getBestTarget()
 	local opt = VasGG.Options
 	local originLoc = getAimOrigin()
@@ -684,8 +711,13 @@ local function getBestTarget()
 	end
 	
 	for _, obj in ipairs(VasGG._objects or {}) do
-		if obj.Type == "Player" and opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then
-			continue
+		if obj.Type == "Player" then
+			if opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then
+				continue
+			end
+			if not isPlayerAllowed(obj.Target) or not isTeamAllowed(obj.Target) then
+				continue
+			end
 		end
 		
 		local part, model = getAimPart(obj)
@@ -698,7 +730,6 @@ local function getBestTarget()
 			
 			local currentPos = part.Position
 			
-			-- Target Prediction Logic
 			if opt.AimPrediction and part:IsA("BasePart") then
 				currentPos = currentPos + (part.Velocity * opt.AimPredictionFactor)
 			end
@@ -759,7 +790,6 @@ function VasGG.AimbotStep()
 	local originLoc = getAimOrigin()
 	local centerScreen = cam.ViewportSize / 2
 
-	-- Radar Framework Setup
 	if opt.Radar then
 		radarBackground.Position = opt.RadarPosition
 		radarBackground.Radius = opt.RadarRadius
@@ -831,7 +861,6 @@ function VasGG.AimbotStep()
 		cam.CFrame = camCF:Lerp(goalCF, opt.AimSmoothness)
 	end
 
-	-- Triggerbot with Hitbox Filters and Hitchance Pass
 	if opt.Triggerbot then
 		local rayOrigin = cam.CFrame.Position
 		local rayDirection = cam.CFrame.LookVector * opt.MaxDistance
@@ -861,13 +890,23 @@ function VasGG.AimbotStep()
 				for _, obj in ipairs(VasGG._objects or {}) do
 					local _, _, _, model = obj:GetRootAndHealth()
 					if model and result.Instance:IsDescendantOf(model) then
-						if not (obj.Type == "Player" and opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team) then
+						if obj.Type == "Player" then
+							local isTeammate = opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team
+							local allowed = isPlayerAllowed(obj.Target) and isTeamAllowed(obj.Target)
+							
+							if not isTeammate and allowed then
+								local chanceRoll = math.random(1, 100)
+								if chanceRoll <= opt.TriggerbotHitchance then
+									hitVerified = true
+								end
+							end
+						else
 							local chanceRoll = math.random(1, 100)
 							if chanceRoll <= opt.TriggerbotHitchance then
 								hitVerified = true
 							end
-							break
 						end
+						break
 					end
 				end
 			end
