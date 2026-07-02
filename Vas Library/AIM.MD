@@ -75,6 +75,7 @@ VasGG.Options.Aimbot = false
 VasGG.Options.AimMode = "Hold"        -- "Hold" or "Always"
 VasGG.Options.AimKey = Enum.UserInputType.MouseButton2  -- right mouse
 VasGG.Options.AimFOV = 100            -- pixels
+VasGG.Options.FOVPosition = "Mouse", -- Added configuration option: "Mouse" or "Center"
 VasGG.Options.AimSmoothness = 0.15    -- 0..1
 VasGG.Options.AimPriority = "Mouse"   -- "Mouse", "Distance", "Health"
 VasGG.Options.AimPrediction = false
