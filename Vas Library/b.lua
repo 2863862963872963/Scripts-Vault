@@ -74,7 +74,7 @@ VasGG.Options = {
 	ShowFOVCircle = true,
 	WallCheck = false,      
 	AimWallCheck = false,   
-	AimTargetMode = "Mouse", 
+	AimTargetMode = "Camera", 
 	AimDistanceOffsetsToggle = false, 
 	AimDistanceOffsets = {  
 		{Distance = 100, Offset = 5},
