@@ -614,4 +614,4 @@ function VasGG.Destroy()
     -- if Drawing.clear then pcall(Drawing.clear) end
 end
 
-ret
+return VasGG
