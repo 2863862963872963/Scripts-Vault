@@ -57,25 +57,21 @@ VasGG.Options = {
     AimBlacklist = {},
     AimShowFOV = true,
     AimFOVColor = Color3.fromRGB(255,255,255),
+    AimCondition = nil,  -- function(player) -> boolean
     
-    -- ===== TRIGGERBOT OPTIONS =====
     TriggerbotEnabled = false,
     TriggerbotHitboxes = {"Head", "HumanoidRootPart"},
     TriggerbotDelay = 0.1,
-    TriggerbotMode = "Hold",            -- "Always" or "Hold"
-    TriggerbotKey = Enum.UserInputType.MouseButton2,  -- key to hold
+    TriggerbotMode = "Hold",
+    TriggerbotKey = Enum.UserInputType.MouseButton2,
     TriggerbotTeamCheck = false,
     TriggerbotWallCheck = false,
     TriggerbotBlacklist = {},
     TriggerbotMaxDistance = 1000,
+    TriggerbotCondition = nil,  -- function(player) -> boolean
 }
 
--- ===== INTERNAL STATE =====
-local lastTriggerTime = 0
-local fovCircle = nil  -- will be created later
-local triggerbotConnection = nil
-
--- ===== UTILITY FUNCTIONS =====
+-- ===== UTILITY FUNCTIONS (unchanged) =====
 local function newDrawing(class, props)
     local obj = Drawing.new(class)
     for k, v in pairs(props) do
@@ -137,7 +133,7 @@ local function hasLineOfSight(targetPos, targetModel)
     return false
 end
 
--- ===== ESP CLASS =====
+-- ===== ESP CLASS (unchanged) =====
 function VasGG.new(target, espType)
     local self = setmetatable({}, VasGG)
     self.Target = target
@@ -231,7 +227,6 @@ function VasGG:Update()
         return
     end
     
-    -- Use the root part directly for bounding box (avoid redundant FindFirstChild)
     local x, y, w, h, onScreen = getBoundingBox(root)
     if not onScreen then
         self:HideAll()
@@ -355,7 +350,7 @@ function VasGG:Remove()
     end
 end
 
--- ===== PLAYER / NPC MANAGEMENT =====
+-- ===== PLAYER / NPC MANAGEMENT (unchanged) =====
 function VasGG.AddPlayer(player)
     if player == LocalPlayer then return end
     for _, obj in ipairs(VasGG._objects or {}) do
@@ -412,7 +407,6 @@ function VasGG.AddNPCsByTag(tag)
     end))
 end
 
--- ===== INIT ESP =====
 function VasGG.Init()
     VasGG._objects = VasGG._objects or {}
     VasGG._conn = RunService.RenderStepped:Connect(function()
@@ -423,7 +417,7 @@ function VasGG.Init()
     end)
 end
 
--- ===== AIMBOT =====
+-- ===== AIMBOT (with condition) =====
 local function isKeyDown(key)
     if typeof(key) == "EnumItem" then
         if key.EnumType == Enum.UserInputType then
@@ -462,6 +456,14 @@ local function getBestTarget()
             if obj.Target.Name == name then blacklisted = true break end
         end
         if blacklisted then continue end
+        
+        -- Apply custom condition
+        if type(opt.AimCondition) == "function" then
+            local success, result = pcall(opt.AimCondition, obj.Target)
+            if not success or not result then
+                continue  -- condition failed or errored
+            end
+        end
         
         local part, model = getAimPart(obj)
         if part then
@@ -509,7 +511,7 @@ function VasGG.InitAimbot()
     VasGG._aimConn = RunService.RenderStepped:Connect(VasGG.AimbotStep)
 end
 
--- ===== TRIGGERBOT =====
+-- ===== TRIGGERBOT (with condition) =====
 local function isHoldingTrigger()
     local opt = VasGG.Options
     if opt.TriggerbotMode == "Always" then return true end
@@ -517,15 +519,13 @@ local function isHoldingTrigger()
 end
 
 local function fireWeapon()
-    -- Try to use common exploit function first
     if mouse1click then
         mouse1click()
         return true
     end
-    -- Fallback: use VirtualInputManager
     pcall(function()
         VirtualInputManager:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, true, false, 0)
-        task.wait(0.02)  -- small hold
+        task.wait(0.02)
         VirtualInputManager:SendMouseButtonEvent(Enum.UserInputType.MouseButton1, false, false, 0)
     end)
     return true
@@ -544,35 +544,38 @@ function VasGG.TriggerbotStep()
     for _, obj in ipairs(VasGG._objects or {}) do
         if obj.Type ~= "Player" then continue end
         
-        -- Team check
         if opt.TriggerbotTeamCheck and obj.Target.Team == LocalPlayer.Team then continue end
-        -- Blacklist
+        
         local blacklisted = false
         for _, name in ipairs(opt.TriggerbotBlacklist) do
             if obj.Target.Name == name then blacklisted = true break end
         end
         if blacklisted then continue end
         
+        -- Apply custom condition
+        if type(opt.TriggerbotCondition) == "function" then
+            local success, result = pcall(opt.TriggerbotCondition, obj.Target)
+            if not success or not result then
+                continue
+            end
+        end
+        
         local root, _, _, charOrModel = obj:GetRootAndHealth()
         if not root then continue end
         
-        -- Distance check
         local dist = (cam.CFrame.Position - root.Position).Magnitude
         if dist > opt.TriggerbotMaxDistance then continue end
         
-        -- Wall check (use root position for line of sight)
         if opt.TriggerbotWallCheck and not hasLineOfSight(root.Position, charOrModel) then continue end
         
-        -- Check each hitbox part
         for _, partName in ipairs(opt.TriggerbotHitboxes) do
             local part = charOrModel:FindFirstChild(partName)
             if part then
                 local x, y, w, h, onScreen = getBoundingBox(part)
                 if onScreen then
-                    -- Check if center of screen is inside the bounding box
                     if center.X >= x and center.X <= x + w and center.Y >= y and center.Y <= y + h then
                         table.insert(validTargets, obj)
-                        break  -- one hitbox is enough for this target
+                        break
                     end
                 end
             end
@@ -580,7 +583,6 @@ function VasGG.TriggerbotStep()
     end
     
     if #validTargets > 0 then
-        -- Fire
         fireWeapon()
         lastTriggerTime = now
     end
@@ -609,9 +611,6 @@ function VasGG.Destroy()
         fovCircle:Remove()
         fovCircle = nil
     end
-    
-    -- Optional: clear all drawings, but be cautious
-    -- if Drawing.clear then pcall(Drawing.clear) end
 end
 
 return VasGG
