@@ -13,23 +13,11 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
--- Filters can hold Player Names (Strings) or UserIds (Numbers)
-VasGG.Whitelist = {
-	-- "PlayerName1",
-	-- 12345678
-}
-
-VasGG.Blacklist = {
-	-- "TargetName1",
-	-- 87654321
-}
-
--- Filters can hold Team Names (Strings)
-VasGG.TeamList = {
-	-- "Guards",
-	-- "Criminals"
-}
+VasGG.Whitelist = {}
+VasGG.Blacklist = {}
+VasGG.TeamList = {}
 
 VasGG.Options = {
 	Enabled = true,
@@ -69,47 +57,38 @@ VasGG.Options = {
 	AimTeamCheck = false,
 	ShowFOVCircle = true,
 	WallCheck = false,
-	
 	ShowTeamColor = true,      
 	Triggerbot = false,         
 	TriggerbotKey = Enum.KeyCode.V, 
 	TriggerbotMode = "Hold",   
 	TriggerbotDelay = 0.05,     
 	TriggerbotTeamCheck = true,
-
-	-- Filtering Architecture Options
-	UseWhitelist = true,       -- Whitelisted players will be completely ignored (No ESP, No Aim)
-	UseBlacklistOnly = false,  -- If true, the script will ONLY track people in the Blacklist array
-	UseTeamListOnly = false,   -- If true, the script will ONLY track players on teams within the TeamList array
+	TriggerbotHitboxes = {},
+	UseWhitelist = true,       
+	UseBlacklistOnly = false,  
+	UseTeamListOnly = false,   
 }
 
 local lastTriggerShot = 0
 
 local function checkLists(player)
 	if not player or not player:IsA("Player") then return true end
-	
-	-- Whitelist Filtering
 	if VasGG.Options.UseWhitelist then
 		if table.find(VasGG.Whitelist, player.Name) or table.find(VasGG.Whitelist, player.UserId) then
 			return false
 		end
 	end
-
-	-- Blacklist Only Filtering
 	if VasGG.Options.UseBlacklistOnly then
 		if not table.find(VasGG.Blacklist, player.Name) and not table.find(VasGG.Blacklist, player.UserId) then
 			return false
 		end
 	end
-
-	-- TeamList Only Filtering
 	if VasGG.Options.UseTeamListOnly then
 		local currentTeam = player.Team
 		if not currentTeam or not table.find(VasGG.TeamList, currentTeam.Name) then
 			return false
 		end
 	end
-
 	return true
 end
 
@@ -239,35 +218,28 @@ function VasGG:Update()
 		self:HideAll()
 		return
 	end
-
-	-- Master Filtering check
 	if self.Type == "Player" and not checkLists(self.Target) then
 		self:HideAll()
 		return
 	end
-
 	local root, health, maxHealth, charOrModel = self:GetRootAndHealth()
 	if not root then
 		self:HideAll()
 		return
 	end
-
 	if self.Type == "Player" and opt.TeamCheck and self.Target.Team == LocalPlayer.Team then
 		self:HideAll()
 		return
 	end
-
 	local dist = (cam.CFrame.Position - root.Position).Magnitude
 	if dist > opt.MaxDistance then
 		self:HideAll()
 		return
 	end
-
 	local scale = 1
 	if opt.DistanceScale then
 		scale = math.clamp(1 - (dist / opt.ScaleMaxDistance), opt.ScaleMin, 1)
 	end
-
 	local part = charOrModel:FindFirstChild("HumanoidRootPart") or root
 	if opt.WallCheck and not hasLineOfSight(part.Position, charOrModel) then
 		self:HideAll()
@@ -278,10 +250,8 @@ function VasGG:Update()
 		self:HideAll()
 		return
 	end
-
 	local d = self.Drawings
 	local espColor = getESPColor(self)
-
 	if opt.Box then
 		if opt.BoxType == "Corner" then
 			d.Box.Visible = false
@@ -327,7 +297,6 @@ function VasGG:Update()
 		for _, l in ipairs(d.Corners) do l.Visible = false end
 		for _, l in ipairs(d.Cube) do l.Visible = false end
 	end
-
 	if opt.Highlight then
 		if not self.HighlightObj or not self.HighlightObj.Parent then
 			self.HighlightObj = Instance.new("Highlight")
@@ -342,7 +311,6 @@ function VasGG:Update()
 	elseif self.HighlightObj then
 		self.HighlightObj.Enabled = false
 	end
-
 	if opt.Tracer then
 		local originX = cam.ViewportSize.X / 2
 		local originY = opt.TracerOrigin == "Top" and 0 or cam.ViewportSize.Y
@@ -354,7 +322,6 @@ function VasGG:Update()
 	else
 		d.Tracer.Visible = false
 	end
-
 	if opt.Name then
 		d.Name.Text = self.Type == "Player" and self.Target.Name or charOrModel.Name
 		d.Name.Position = Vector2.new(x + w/2, y - 16 * scale)
@@ -364,7 +331,6 @@ function VasGG:Update()
 	else
 		d.Name.Visible = false
 	end
-
 	if opt.Distance then
 		d.Distance.Text = string.format("%d studs", dist)
 		d.Distance.Position = Vector2.new(x + w/2, y + h + 2)
@@ -374,14 +340,12 @@ function VasGG:Update()
 	else
 		d.Distance.Visible = false
 	end
-
 	if opt.HealthBar and maxHealth > 0 then
 		local pct = math.clamp(health / maxHealth, 0, 1)
 		local barWidth = opt.HealthBarWidth * scale
 		d.HealthBarBG.Position = Vector2.new(x - barWidth - 2, y)
 		d.HealthBarBG.Size = Vector2.new(barWidth, h)
 		d.HealthBarBG.Visible = true
-
 		d.HealthBar.Position = Vector2.new(x - barWidth - 2, y + h * (1 - pct))
 		d.HealthBar.Size = Vector2.new(barWidth, h * pct)
 		d.HealthBar.Color = Color3.fromHSV(pct * 0.33, 1, 1)
@@ -522,8 +486,23 @@ end
 
 local function getAimPart(obj)
 	local root, _, _, charOrModel = obj:GetRootAndHealth()
-	if not root then return nil end
-	local part = charOrModel:FindFirstChild(VasGG.Options.AimPart) or root
+	if not root then return nil, nil end
+	local targetName = VasGG.Options.AimPart or "Head"
+	local part = charOrModel:FindFirstChild(targetName)
+	if not part then
+		if targetName == "Torso" then
+			part = charOrModel:FindFirstChild("UpperTorso") or charOrModel:FindFirstChild("LowerTorso")
+		elseif targetName == "Left Arm" then
+			part = charOrModel:FindFirstChild("LeftUpperArm") or charOrModel:FindFirstChild("LeftLowerArm") or charOrModel:FindFirstChild("LeftHand")
+		elseif targetName == "Right Arm" then
+			part = charOrModel:FindFirstChild("RightUpperArm") or charOrModel:FindFirstChild("RightLowerArm") or charOrModel:FindFirstChild("RightHand")
+		elseif targetName == "Left Leg" then
+			part = charOrModel:FindFirstChild("LeftUpperLeg") or charOrModel:FindFirstChild("LeftLowerLeg") or charOrModel:FindFirstChild("LeftFoot")
+		elseif targetName == "Right Leg" then
+			part = charOrModel:FindFirstChild("RightUpperLeg") or charOrModel:FindFirstChild("RightLowerLeg") or charOrModel:FindFirstChild("RightFoot")
+		end
+	end
+	part = part or root
 	return part, charOrModel
 end
 
@@ -536,7 +515,6 @@ local function getBestTarget()
 			if not checkLists(obj.Target) then continue end 
 			if opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then continue end
 		end
-		
 		local part, model = getAimPart(obj)
 		if part then
 			local screenPos, vis = cam:WorldToViewportPoint(part.Position)
@@ -559,17 +537,25 @@ local function performTriggerbot()
 
 	local mousePos = UserInputService:GetMouseLocation()
 	local unitRay = cam:ViewportPointToRay(mousePos.X, mousePos.Y)
-	
 	local rayParams = RaycastParams.new()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	rayParams.FilterDescendantsInstances = {LocalPlayer.Character, workspace:FindFirstChild("Drawings") or table.unpack({})}
 	rayParams.IgnoreWater = true
 
 	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * opt.MaxDistance, rayParams)
 	if result and result.Instance then
 		local hitInstance = result.Instance
+		if hitInstance:IsA("Accessory") or hitInstance.Parent:IsA("Accessory") or hitInstance:FindFirstAncestorOfClass("Tool") then
+			return
+		end
 		local targetCharacter = hitInstance:FindFirstAncestorOfClass("Model")
-		if targetCharacter then
+		if targetCharacter and not targetCharacter:FindFirstChildOfClass("Humanoid") then
+			local higherModel = targetCharacter.Parent and targetCharacter.Parent:FindFirstAncestorOfClass("Model")
+			if higherModel and higherModel:FindFirstChildOfClass("Humanoid") then
+				targetCharacter = higherModel
+			end
+		end
+		if targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid") then
 			for _, obj in ipairs(VasGG._objects or {}) do
 				local _, _, _, charOrModel = obj:GetRootAndHealth()
 				if charOrModel == targetCharacter then
@@ -577,11 +563,16 @@ local function performTriggerbot()
 						if not checkLists(obj.Target) then return end 
 						if opt.TriggerbotTeamCheck and obj.Target.Team == LocalPlayer.Team then return end
 					end
-					
+					if opt.TriggerbotHitboxes and #opt.TriggerbotHitboxes > 0 then
+						if not table.find(opt.TriggerbotHitboxes, hitInstance.Name) then
+							return 
+						end
+					end
 					lastTriggerShot = tick()
-					mouse1press()
-					task.wait(0.01)
-					mouse1release()
+					local screenPos = cam:WorldToViewportPoint(hitInstance.Position)
+					VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, true, game, 0)
+					task.wait(0.015) 
+					VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 0)
 					break
 				end
 			end
@@ -591,6 +582,7 @@ end
 
 function VasGG.AimbotStep()
 	local opt = VasGG.Options
+	pcall(performTriggerbot)
 	if opt.ShowFOVCircle and opt.Aimbot then
 		local mouseLoc = UserInputService:GetMouseLocation()
 		fovCircle.Position = mouseLoc
@@ -600,14 +592,9 @@ function VasGG.AimbotStep()
 	else
 		fovCircle.Visible = false
 	end
-
-	pcall(performTriggerbot)
-
 	if not opt.Aimbot or not isHolding() then return end
-
 	local targetPart = getBestTarget()
 	if not targetPart then return end
-
 	local targetPos = targetPart.Position
 	local camCF = cam.CFrame
 	local goalCF = CFrame.new(camCF.Position, targetPos)
