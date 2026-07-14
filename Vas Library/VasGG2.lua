@@ -14,6 +14,23 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 
+-- Filters can hold Player Names (Strings) or UserIds (Numbers)
+VasGG.Whitelist = {
+	-- "PlayerName1",
+	-- 12345678
+}
+
+VasGG.Blacklist = {
+	-- "TargetName1",
+	-- 87654321
+}
+
+-- Filters can hold Team Names (Strings)
+VasGG.TeamList = {
+	-- "Guards",
+	-- "Criminals"
+}
+
 VasGG.Options = {
 	Enabled = true,
 	TeamCheck = false,
@@ -52,7 +69,49 @@ VasGG.Options = {
 	AimTeamCheck = false,
 	ShowFOVCircle = true,
 	WallCheck = false,
+	
+	ShowTeamColor = true,      
+	Triggerbot = false,         
+	TriggerbotKey = Enum.KeyCode.V, 
+	TriggerbotMode = "Hold",   
+	TriggerbotDelay = 0.05,     
+	TriggerbotTeamCheck = true,
+
+	-- Filtering Architecture Options
+	UseWhitelist = true,       -- Whitelisted players will be completely ignored (No ESP, No Aim)
+	UseBlacklistOnly = false,  -- If true, the script will ONLY track people in the Blacklist array
+	UseTeamListOnly = false,   -- If true, the script will ONLY track players on teams within the TeamList array
 }
+
+local lastTriggerShot = 0
+
+local function checkLists(player)
+	if not player or not player:IsA("Player") then return true end
+	
+	-- Whitelist Filtering
+	if VasGG.Options.UseWhitelist then
+		if table.find(VasGG.Whitelist, player.Name) or table.find(VasGG.Whitelist, player.UserId) then
+			return false
+		end
+	end
+
+	-- Blacklist Only Filtering
+	if VasGG.Options.UseBlacklistOnly then
+		if not table.find(VasGG.Blacklist, player.Name) and not table.find(VasGG.Blacklist, player.UserId) then
+			return false
+		end
+	end
+
+	-- TeamList Only Filtering
+	if VasGG.Options.UseTeamListOnly then
+		local currentTeam = player.Team
+		if not currentTeam or not table.find(VasGG.TeamList, currentTeam.Name) then
+			return false
+		end
+	end
+
+	return true
+end
 
 local function newDrawing(class, props)
 	local obj = Drawing.new(class)
@@ -60,6 +119,13 @@ local function newDrawing(class, props)
 		obj[k] = v
 	end
 	return obj
+end
+
+local function getESPColor(self)
+	if VasGG.Options.ShowTeamColor and self.Type == "Player" and self.Target.Team then
+		return self.Target.TeamColor.Color
+	end
+	return VasGG.Options.BoxColor
 end
 
 local function getWH(part)
@@ -174,6 +240,12 @@ function VasGG:Update()
 		return
 	end
 
+	-- Master Filtering check
+	if self.Type == "Player" and not checkLists(self.Target) then
+		self:HideAll()
+		return
+	end
+
 	local root, health, maxHealth, charOrModel = self:GetRootAndHealth()
 	if not root then
 		self:HideAll()
@@ -208,6 +280,7 @@ function VasGG:Update()
 	end
 
 	local d = self.Drawings
+	local espColor = getESPColor(self)
 
 	if opt.Box then
 		if opt.BoxType == "Corner" then
@@ -224,7 +297,7 @@ function VasGG:Update()
 			for i, line in ipairs(d.Corners) do
 				line.From = corners[i][1]
 				line.To = corners[i][2]
-				line.Color = opt.BoxColor
+				line.Color = espColor
 				line.Thickness = opt.BoxThickness * scale
 				line.Visible = true
 			end
@@ -236,7 +309,7 @@ function VasGG:Update()
 				local line = d.Cube[i]
 				line.From = pts[edge[1]]
 				line.To = pts[edge[2]]
-				line.Color = opt.BoxColor
+				line.Color = espColor
 				line.Thickness = opt.BoxThickness * scale
 				line.Visible = onScreen3D
 			end
@@ -245,7 +318,7 @@ function VasGG:Update()
 			for _, l in ipairs(d.Cube) do l.Visible = false end
 			d.Box.Position = Vector2.new(x, y)
 			d.Box.Size = Vector2.new(w, h)
-			d.Box.Color = opt.BoxColor
+			d.Box.Color = espColor
 			d.Box.Thickness = opt.BoxThickness * scale
 			d.Box.Visible = true
 		end
@@ -275,7 +348,7 @@ function VasGG:Update()
 		local originY = opt.TracerOrigin == "Top" and 0 or cam.ViewportSize.Y
 		d.Tracer.From = Vector2.new(originX, originY)
 		d.Tracer.To = Vector2.new(x + w/2, y + h)
-		d.Tracer.Color = opt.TracerColor
+		d.Tracer.Color = opt.ShowTeamColor and espColor or opt.TracerColor
 		d.Tracer.Thickness = opt.TracerThickness
 		d.Tracer.Visible = true
 	else
@@ -285,7 +358,7 @@ function VasGG:Update()
 	if opt.Name then
 		d.Name.Text = self.Type == "Player" and self.Target.Name or charOrModel.Name
 		d.Name.Position = Vector2.new(x + w/2, y - 16 * scale)
-		d.Name.Color = opt.NameColor
+		d.Name.Color = opt.ShowTeamColor and espColor or opt.NameColor
 		d.Name.Size = math.floor(14 * scale)
 		d.Name.Visible = true
 	else
@@ -295,7 +368,7 @@ function VasGG:Update()
 	if opt.Distance then
 		d.Distance.Text = string.format("%d studs", dist)
 		d.Distance.Position = Vector2.new(x + w/2, y + h + 2)
-		d.Distance.Color = opt.NameColor
+		d.Distance.Color = opt.ShowTeamColor and espColor or opt.NameColor
 		d.Distance.Size = math.floor(13 * scale)
 		d.Distance.Visible = true
 	else
@@ -405,7 +478,6 @@ function VasGG.Destroy()
 	end
 end
 
-
 local fovCircle = newDrawing("Circle", {Visible = false, Thickness = 1, Color = Color3.fromRGB(255,255,255), Filled = false, NumSides = 48})
 
 local function isHolding()
@@ -417,6 +489,20 @@ local function isHolding()
 			return UserInputService:IsMouseButtonPressed(VasGG.Options.AimKey)
 		elseif VasGG.Options.AimKey.EnumType == Enum.KeyCode then
 			return UserInputService:IsKeyDown(VasGG.Options.AimKey)
+		end
+	end
+	return false
+end
+
+local function isHoldingTrigger()
+	if VasGG.Options.TriggerbotMode == "Always" then
+		return true
+	end
+	if typeof(VasGG.Options.TriggerbotKey) == "EnumItem" then
+		if VasGG.Options.TriggerbotKey.EnumType == Enum.UserInputType then
+			return UserInputService:IsMouseButtonPressed(VasGG.Options.TriggerbotKey)
+		elseif VasGG.Options.TriggerbotKey.EnumType == Enum.KeyCode then
+			return UserInputService:IsKeyDown(VasGG.Options.TriggerbotKey)
 		end
 	end
 	return false
@@ -446,9 +532,11 @@ local function getBestTarget()
 	local mouseLoc = UserInputService:GetMouseLocation()
 	local best, bestDist = nil, opt.AimFOV
 	for _, obj in ipairs(VasGG._objects or {}) do
-		if obj.Type == "Player" and opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then
-			continue
+		if obj.Type == "Player" then
+			if not checkLists(obj.Target) then continue end 
+			if opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then continue end
 		end
+		
 		local part, model = getAimPart(obj)
 		if part then
 			local screenPos, vis = cam:WorldToViewportPoint(part.Position)
@@ -464,6 +552,43 @@ local function getBestTarget()
 	return best
 end
 
+local function performTriggerbot()
+	local opt = VasGG.Options
+	if not opt.Triggerbot or not isHoldingTrigger() then return end
+	if (tick() - lastTriggerShot) < opt.TriggerbotDelay then return end
+
+	local mousePos = UserInputService:GetMouseLocation()
+	local unitRay = cam:ViewportPointToRay(mousePos.X, mousePos.Y)
+	
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	rayParams.IgnoreWater = true
+
+	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * opt.MaxDistance, rayParams)
+	if result and result.Instance then
+		local hitInstance = result.Instance
+		local targetCharacter = hitInstance:FindFirstAncestorOfClass("Model")
+		if targetCharacter then
+			for _, obj in ipairs(VasGG._objects or {}) do
+				local _, _, _, charOrModel = obj:GetRootAndHealth()
+				if charOrModel == targetCharacter then
+					if obj.Type == "Player" then
+						if not checkLists(obj.Target) then return end 
+						if opt.TriggerbotTeamCheck and obj.Target.Team == LocalPlayer.Team then return end
+					end
+					
+					lastTriggerShot = tick()
+					mouse1press()
+					task.wait(0.01)
+					mouse1release()
+					break
+				end
+			end
+		end
+	end
+end
+
 function VasGG.AimbotStep()
 	local opt = VasGG.Options
 	if opt.ShowFOVCircle and opt.Aimbot then
@@ -475,6 +600,8 @@ function VasGG.AimbotStep()
 	else
 		fovCircle.Visible = false
 	end
+
+	pcall(performTriggerbot)
 
 	if not opt.Aimbot or not isHolding() then return end
 
