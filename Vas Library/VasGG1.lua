@@ -568,11 +568,14 @@ local function performTriggerbot()
 							return 
 						end
 					end
+					
 					lastTriggerShot = tick()
 					local screenPos = cam:WorldToViewportPoint(hitInstance.Position)
+					
 					VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, true, game, 0)
-					task.wait(0.015) 
-					VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 0)
+					task.delay(0.025, function()
+						VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 0)
+					end)
 					break
 				end
 			end
@@ -582,7 +585,9 @@ end
 
 function VasGG.AimbotStep()
 	local opt = VasGG.Options
+	
 	pcall(performTriggerbot)
+	
 	if opt.ShowFOVCircle and opt.Aimbot then
 		local mouseLoc = UserInputService:GetMouseLocation()
 		fovCircle.Position = mouseLoc
@@ -592,7 +597,9 @@ function VasGG.AimbotStep()
 	else
 		fovCircle.Visible = false
 	end
+	
 	if not opt.Aimbot or not isHolding() then return end
+	
 	local targetPart = getBestTarget()
 	if not targetPart then return end
 	local targetPos = targetPart.Position
