@@ -12,18 +12,20 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
+local CollectionService = game:GetService("CollectionService")
 
 VasGG.Options = {
 	Enabled = true,
-	TeamCheck = false,           -- Hide teammates in ESP
-	TeamColor = false,           -- Use team color for ESP
-	ShowTeam = false,            -- Show [Team] next to name
-	ESPBlacklist = {},           -- Player names to ignore in ESP
+	TeamCheck = false,
+	TeamColor = false,
+	ShowTeam = false,
+	ESPBlacklist = {},
 	MaxDistance = 1000,
 	Box = true,
 	BoxColor = Color3.fromRGB(255,255,255),
 	BoxThickness = 1,
 	BoxType = "2D",              -- "2D" or "Corner"
+	CornerLength = 0.25,
 	Tracer = false,
 	TracerColor = Color3.fromRGB(255,255,255),
 	TracerThickness = 1,
@@ -32,11 +34,9 @@ VasGG.Options = {
 	Distance = true,
 	HealthBar = true,
 	HealthBarWidth = 4,
-	Highlight = false,
-	HighlightFillColor = Color3.fromRGB(255,0,0),
-	HighlightOutlineColor = Color3.fromRGB(255,255,255),
-	HighlightFillTransparency = 0.5,
-	HighlightOutlineTransparency = 0,
+	Scale = true,                -- Enable/disable scaling
+	ScaleMin = 0.3,              -- Minimum scale for far targets
+	WallCheck = false,           -- For both ESP and Aimbot
 	Aimbot = false,
 	AimMode = "Hold",
 	AimKey = Enum.UserInputType.MouseButton2,
@@ -44,9 +44,9 @@ VasGG.Options = {
 	AimFOV = 100,
 	AimSmoothness = 0.15,
 	AimTeamCheck = false,
-	AimBlacklist = {},           -- Player names to ignore in Aimbot
+	AimBlacklist = {},
 	ShowFOVCircle = true,
-	WallCheck = false,           -- Only for Aimbot
+	FOVCircleColor = Color3.fromRGB(255,255,255),
 }
 
 local function newDrawing(class, props)
@@ -57,68 +57,105 @@ local function newDrawing(class, props)
 	return obj
 end
 
-local function getWH(part)
-	local vertices = {
-		Vector3.new(-1,-1,-1), Vector3.new(-1,-1,1), Vector3.new(-1,1,-1), Vector3.new(-1,1,1),
-		Vector3.new(1,-1,-1), Vector3.new(1,-1,1), Vector3.new(1,1,-1), Vector3.new(1,1,1)
-	}
+-- Optimized bounding box calculation
+local function getBoundingBox(part)
 	local size = part.Size
 	local cf = part.CFrame
+	local halfSize = size / 2
+	
+	-- Pre-calculate world positions using CFrame operations
+	local right = cf.RightVector * halfSize.X
+	local up = cf.UpVector * halfSize.Y
+	local back = cf.LookVector * halfSize.Z
+	
+	local center = cf.Position
+	local corners = {
+		center - right - up - back,
+		center + right - up - back,
+		center + right + up - back,
+		center - right + up - back,
+		center - right - up + back,
+		center + right - up + back,
+		center + right + up + back,
+		center - right + up + back,
+	}
+	
 	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
 	local onScreen = false
-	for _, v in ipairs(vertices) do
-		local worldPos = cf:PointToWorldSpace(v * (size/2))
-		local screenPos, vis = cam:WorldToViewportPoint(worldPos)
+	
+	for _, pos in ipairs(corners) do
+		local screenPos, vis = cam:WorldToViewportPoint(pos)
 		if vis then onScreen = true end
 		minX = math.min(minX, screenPos.X)
 		minY = math.min(minY, screenPos.Y)
 		maxX = math.max(maxX, screenPos.X)
 		maxY = math.max(maxY, screenPos.Y)
 	end
+	
 	return minX, minY, maxX - minX, maxY - minY, onScreen
+end
+
+-- Wall check function for both ESP and Aimbot
+local function hasLineOfSight(targetPos, targetModel)
+	local origin = cam.CFrame.Position
+	local direction = targetPos - origin
+	local distance = direction.Magnitude
+	if distance == 0 then return true end
+	
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	rayParams.IgnoreWater = true
+	
+	local result = workspace:Raycast(origin, direction, rayParams)
+	if not result then return true end
+	if targetModel and result.Instance:IsDescendantOf(targetModel) then return true end
+	return false
 end
 
 function VasGG.new(target, espType)
 	local self = setmetatable({}, VasGG)
 	self.Target = target
 	self.Type = espType or "Player"
-	self.Visible = true
-
+	
 	self.Drawings = {
 		Box = newDrawing("Square", {Visible = false, Color = VasGG.Options.BoxColor, Thickness = VasGG.Options.BoxThickness, Filled = false}),
 		Corners = {},
 		Tracer = newDrawing("Line", {Visible = false, Color = VasGG.Options.TracerColor, Thickness = VasGG.Options.TracerThickness}),
 		Name = newDrawing("Text", {Visible = false, Color = VasGG.Options.NameColor, Size = 14, Center = true, Outline = true}),
 		Distance = newDrawing("Text", {Visible = false, Color = VasGG.Options.NameColor, Size = 13, Center = true, Outline = true}),
-		HealthBarBG = newDrawing("Square", {Visible = false, Color = Color3.new(0,0,0), Filled = true}),
 		HealthBar = newDrawing("Square", {Visible = false, Color = Color3.fromRGB(0,255,0), Filled = true}),
+		HealthBarBorder = newDrawing("Square", {Visible = false, Color = Color3.new(0,0,0), Filled = false, Thickness = 1}),
 	}
 	for i = 1, 8 do
 		self.Drawings.Corners[i] = newDrawing("Line", {Visible = false, Color = VasGG.Options.BoxColor, Thickness = VasGG.Options.BoxThickness})
 	end
-	self.HighlightObj = nil
-
+	
 	VasGG._objects = VasGG._objects or {}
 	table.insert(VasGG._objects, self)
 	return self
 end
 
 function VasGG:GetRootAndHealth()
+	local charOrModel
+	
 	if self.Type == "Player" then
-		local char = self.Target.Character
-		if not char then return nil end
-		local root = char:FindFirstChild("HumanoidRootPart")
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if not root or not hum then return nil end
-		return root, hum.Health, hum.MaxHealth, char
+		charOrModel = self.Target.Character
+		if not charOrModel then return nil end
 	else
-		local model = self.Target
-		if not model or not model.Parent then return nil end
-		local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-		local hum = model:FindFirstChildOfClass("Humanoid")
-		if not root then return nil end
-		return root, hum and hum.Health or 1, hum and hum.MaxHealth or 1, model
+		charOrModel = self.Target
+		if not charOrModel or not charOrModel.Parent then return nil end
 	end
+	
+	local root = charOrModel:FindFirstChild("HumanoidRootPart") or charOrModel.PrimaryPart
+	local hum = charOrModel:FindFirstChildOfClass("Humanoid")
+	
+	if not root then return nil end
+	
+	local health = hum and hum.Health or 100
+	local maxHealth = hum and hum.MaxHealth or 100
+	
+	return root, health, maxHealth, charOrModel
 end
 
 function VasGG:HideAll()
@@ -129,24 +166,21 @@ function VasGG:HideAll()
 			d.Visible = false
 		end
 	end
-	if self.HighlightObj then
-		self.HighlightObj.Enabled = false
-	end
 end
 
 function VasGG:Update()
 	local opt = VasGG.Options
-	if not opt.Enabled or not self.Visible then
+	if not opt.Enabled then
 		self:HideAll()
 		return
 	end
-
+	
 	local root, health, maxHealth, charOrModel = self:GetRootAndHealth()
 	if not root then
 		self:HideAll()
 		return
 	end
-
+	
 	-- ESP Blacklist
 	if self.Type == "Player" then
 		for _, name in ipairs(opt.ESPBlacklist) do
@@ -156,36 +190,52 @@ function VasGG:Update()
 			end
 		end
 	end
-
+	
+	-- Team Check
 	if self.Type == "Player" and opt.TeamCheck and self.Target.Team == LocalPlayer.Team then
 		self:HideAll()
 		return
 	end
-
+	
+	-- Distance Check
 	local dist = (cam.CFrame.Position - root.Position).Magnitude
 	if dist > opt.MaxDistance then
 		self:HideAll()
 		return
 	end
-
+	
+	-- Wall Check
+	if opt.WallCheck and not hasLineOfSight(root.Position, charOrModel) then
+		self:HideAll()
+		return
+	end
+	
+	-- Calculate bounding box
 	local part = charOrModel:FindFirstChild("HumanoidRootPart") or root
-	local x, y, w, h, onScreen = getWH(part)
+	local x, y, w, h, onScreen = getBoundingBox(part)
 	if not onScreen then
 		self:HideAll()
 		return
 	end
-
+	
+	-- Calculate scale
+	local scale = 1
+	if opt.Scale then
+		scale = math.clamp(1 - ((dist - 50) / 500), opt.ScaleMin, 1)
+	end
+	
 	local d = self.Drawings
 	local boxColor = opt.BoxColor
-
+	
 	if self.Type == "Player" and opt.TeamColor and self.Target.Team then
 		boxColor = self.Target.Team.TeamColor.Color
 	end
-
+	
+	-- Box Drawing
 	if opt.Box then
 		if opt.BoxType == "Corner" then
 			d.Box.Visible = false
-			local cl = 0.25
+			local cl = opt.CornerLength
 			local lw, lh = w * cl, h * cl
 			local corners = {
 				{Vector2.new(x,y), Vector2.new(x+lw,y)}, {Vector2.new(x,y), Vector2.new(x,y+lh)},
@@ -197,7 +247,7 @@ function VasGG:Update()
 				line.From = corners[i][1]
 				line.To = corners[i][2]
 				line.Color = boxColor
-				line.Thickness = opt.BoxThickness
+				line.Thickness = opt.BoxThickness * scale
 				line.Visible = true
 			end
 		else
@@ -205,77 +255,73 @@ function VasGG:Update()
 			d.Box.Position = Vector2.new(x, y)
 			d.Box.Size = Vector2.new(w, h)
 			d.Box.Color = boxColor
-			d.Box.Thickness = opt.BoxThickness
+			d.Box.Thickness = opt.BoxThickness * scale
 			d.Box.Visible = true
 		end
 	else
 		d.Box.Visible = false
 		for _, l in ipairs(d.Corners) do l.Visible = false end
 	end
-
-	if opt.Highlight then
-		if not self.HighlightObj or not self.HighlightObj.Parent then
-			self.HighlightObj = Instance.new("Highlight")
-			self.HighlightObj.Parent = charOrModel
-		end
-		self.HighlightObj.FillColor = opt.HighlightFillColor
-		self.HighlightObj.OutlineColor = opt.HighlightOutlineColor
-		self.HighlightObj.FillTransparency = opt.HighlightFillTransparency
-		self.HighlightObj.OutlineTransparency = opt.HighlightOutlineTransparency
-		self.HighlightObj.Enabled = true
-	elseif self.HighlightObj then
-		self.HighlightObj.Enabled = false
-	end
-
+	
+	-- Tracer
 	if opt.Tracer then
 		local originX = cam.ViewportSize.X / 2
 		local originY = cam.ViewportSize.Y
 		d.Tracer.From = Vector2.new(originX, originY)
 		d.Tracer.To = Vector2.new(x + w/2, y + h)
 		d.Tracer.Color = opt.TracerColor
-		d.Tracer.Thickness = opt.TracerThickness
+		d.Tracer.Thickness = opt.TracerThickness * scale
 		d.Tracer.Visible = true
 	else
 		d.Tracer.Visible = false
 	end
-
+	
+	-- Name
 	if opt.Name then
 		local nameText = self.Type == "Player" and self.Target.Name or charOrModel.Name
 		if self.Type == "Player" and opt.ShowTeam and self.Target.Team then
 			nameText = nameText .. " [" .. self.Target.Team.Name .. "]"
 		end
 		d.Name.Text = nameText
-		d.Name.Position = Vector2.new(x + w/2, y - 18)
+		d.Name.Position = Vector2.new(x + w/2, y - 18 * scale)
 		d.Name.Color = opt.NameColor
-		d.Name.Size = 14
+		d.Name.Size = math.floor(14 * scale)
 		d.Name.Visible = true
 	else
 		d.Name.Visible = false
 	end
-
+	
+	-- Distance
 	if opt.Distance then
 		d.Distance.Text = string.format("%d studs", math.floor(dist))
-		d.Distance.Position = Vector2.new(x + w/2, y + h + 4)
+		d.Distance.Position = Vector2.new(x + w/2, y + h + 4 * scale)
 		d.Distance.Color = opt.NameColor
-		d.Distance.Size = 13
+		d.Distance.Size = math.floor(13 * scale)
 		d.Distance.Visible = true
 	else
 		d.Distance.Visible = false
 	end
-
+	
+	-- Health Bar (optimized with border)
 	if opt.HealthBar and maxHealth > 0 then
 		local pct = math.clamp(health / maxHealth, 0, 1)
-		local barWidth = opt.HealthBarWidth
-		d.HealthBarBG.Position = Vector2.new(x - barWidth - 2, y)
-		d.HealthBarBG.Size = Vector2.new(barWidth, h)
-		d.HealthBarBG.Visible = true
-
-		d.HealthBar.Position = Vector2.new(x - barWidth - 2, y + h * (1 - pct))
+		local barWidth = opt.HealthBarWidth * scale
+		local barX = x - barWidth - 2 * scale
+		
+		-- Border
+		d.HealthBarBorder.Position = Vector2.new(barX - 1 * scale, y - 1 * scale)
+		d.HealthBarBorder.Size = Vector2.new(barWidth + 2 * scale, h + 2 * scale)
+		d.HealthBarBorder.Color = Color3.new(0, 0, 0)
+		d.HealthBarBorder.Thickness = 1 * scale
+		d.HealthBarBorder.Visible = true
+		
+		-- Health fill
+		d.HealthBar.Position = Vector2.new(barX, y + h * (1 - pct))
 		d.HealthBar.Size = Vector2.new(barWidth, h * pct)
 		d.HealthBar.Color = Color3.fromHSV(pct * 0.33, 1, 1)
 		d.HealthBar.Visible = true
 	else
-		d.HealthBarBG.Visible = false
+		d.HealthBarBorder.Visible = false
 		d.HealthBar.Visible = false
 	end
 end
@@ -288,9 +334,7 @@ function VasGG:Remove()
 			d:Remove()
 		end
 	end
-	if self.HighlightObj then
-		self.HighlightObj:Destroy()
-	end
+	
 	for i, obj in ipairs(VasGG._objects) do
 		if obj == self then
 			table.remove(VasGG._objects, i)
@@ -299,20 +343,27 @@ function VasGG:Remove()
 	end
 end
 
+-- Player Management
 function VasGG.AddPlayer(player)
 	if player == LocalPlayer then return end
+	-- Check if player already exists
+	for _, obj in ipairs(VasGG._objects or {}) do
+		if obj.Target == player then return end
+	end
 	return VasGG.new(player, "Player")
 end
 
 function VasGG.AddPlayers()
 	VasGG._objects = VasGG._objects or {}
 	VasGG._conns = VasGG._conns or {}
+	
 	for _, plr in ipairs(Players:GetPlayers()) do
 		VasGG.AddPlayer(plr)
 	end
+	
 	table.insert(VasGG._conns, Players.PlayerAdded:Connect(VasGG.AddPlayer))
 	table.insert(VasGG._conns, Players.PlayerRemoving:Connect(function(plr)
-		for _, obj in ipairs(VasGG._objects) do
+		for i, obj in ipairs(VasGG._objects) do
 			if obj.Target == plr then
 				obj:Remove()
 				break
@@ -321,18 +372,30 @@ function VasGG.AddPlayers()
 	end))
 end
 
+-- NPC Management (Improved)
 function VasGG.AddNPCsByTag(tag)
-	local CollectionService = game:GetService("CollectionService")
 	VasGG._objects = VasGG._objects or {}
 	VasGG._conns = VasGG._conns or {}
-	for _, model in ipairs(CollectionService:GetTagged(tag)) do
-		VasGG.new(model, "NPC")
-	end
-	table.insert(VasGG._conns, CollectionService:GetInstanceAddedSignal(tag):Connect(function(model)
-		VasGG.new(model, "NPC")
-	end))
-	table.insert(VasGG._conns, CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
+	
+	local function addNPC(model)
+		if not model or not model.Parent then return end
+		-- Check if already exists
 		for _, obj in ipairs(VasGG._objects) do
+			if obj.Target == model then return end
+		end
+		-- Only add if it has a Humanoid or HumanoidRootPart
+		if model:FindFirstChild("Humanoid") or model:FindFirstChild("HumanoidRootPart") then
+			VasGG.new(model, "NPC")
+		end
+	end
+	
+	for _, model in ipairs(CollectionService:GetTagged(tag)) do
+		addNPC(model)
+	end
+	
+	table.insert(VasGG._conns, CollectionService:GetInstanceAddedSignal(tag):Connect(addNPC))
+	table.insert(VasGG._conns, CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model)
+		for i, obj in ipairs(VasGG._objects) do
 			if obj.Target == model then
 				obj:Remove()
 				break
@@ -341,6 +404,7 @@ function VasGG.AddNPCsByTag(tag)
 	end))
 end
 
+-- Initialize ESP
 function VasGG.Init()
 	VasGG._objects = VasGG._objects or {}
 	VasGG._conn = RunService.RenderStepped:Connect(function()
@@ -366,18 +430,6 @@ local function isHolding()
 	return false
 end
 
-local function hasLineOfSight(targetPos, targetModel)
-	local origin = cam.CFrame.Position
-	local rayParams = RaycastParams.new()
-	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
-	rayParams.IgnoreWater = true
-	local result = workspace:Raycast(origin, (targetPos - origin), rayParams)
-	if not result then return true end
-	if targetModel and result.Instance:IsDescendantOf(targetModel) then return true end
-	return false
-end
-
 local function getAimPart(obj)
 	local root, _, _, charOrModel = obj:GetRootAndHealth()
 	if not root then return nil end
@@ -389,20 +441,20 @@ local function getBestTarget()
 	local opt = VasGG.Options
 	local mouseLoc = UserInputService:GetMouseLocation()
 	local best, bestDist = nil, opt.AimFOV
-
+	
 	for _, obj in ipairs(VasGG._objects or {}) do
 		if obj.Type ~= "Player" then continue end
-
+		
 		-- Team Check
 		if opt.AimTeamCheck and obj.Target.Team == LocalPlayer.Team then continue end
-
+		
 		-- Aim Blacklist
 		local blacklisted = false
 		for _, name in ipairs(opt.AimBlacklist) do
 			if obj.Target.Name == name then blacklisted = true break end
 		end
 		if blacklisted then continue end
-
+		
 		local part, model = getAimPart(obj)
 		if part then
 			local screenPos, vis = cam:WorldToViewportPoint(part.Position)
@@ -420,21 +472,23 @@ end
 
 function VasGG.AimbotStep()
 	local opt = VasGG.Options
+	
+	-- FOV Circle
 	if opt.ShowFOVCircle and opt.Aimbot then
 		local mouseLoc = UserInputService:GetMouseLocation()
 		fovCircle.Position = mouseLoc
 		fovCircle.Radius = opt.AimFOV
-		fovCircle.Color = opt.HighlightOutlineColor
+		fovCircle.Color = opt.FOVCircleColor
 		fovCircle.Visible = true
 	else
 		fovCircle.Visible = false
 	end
-
+	
 	if not opt.Aimbot or not isHolding() then return end
-
+	
 	local targetPart = getBestTarget()
 	if not targetPart then return end
-
+	
 	local targetPos = targetPart.Position
 	local camCF = cam.CFrame
 	local goalCF = CFrame.new(camCF.Position, targetPos)
@@ -445,14 +499,31 @@ function VasGG.InitAimbot()
 	VasGG._aimConn = RunService.RenderStepped:Connect(VasGG.AimbotStep)
 end
 
-local _baseDestroy = VasGG.Destroy
+-- Clean Destroy
 function VasGG.Destroy()
+	-- Disconnect all connections
 	if VasGG._conn then VasGG._conn:Disconnect() end
 	if VasGG._aimConn then VasGG._aimConn:Disconnect() end
 	for _, c in ipairs(VasGG._conns or {}) do c:Disconnect() end
-	for _, obj in ipairs(VasGG._objects or {}) do obj:Remove() end
-	fovCircle.Visible = false
+	
+	-- Remove all objects
+	for _, obj in ipairs(VasGG._objects or {}) do
+		obj:Remove()
+	end
+	
+	-- Clear tables
 	VasGG._objects = {}
+	VasGG._conns = {}
+	
+	-- Hide FOV circle
+	fovCircle.Visible = false
+	
+	-- Clear drawing cache for memory
+	if Drawing.clear then
+		pcall(Drawing.clear)
+	elseif cleardrawcache then
+		pcall(cleardrawcache)
+	end
 end
 
 return VasGG
