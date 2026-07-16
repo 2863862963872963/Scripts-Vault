@@ -62,7 +62,7 @@ VasGG.Options = {
     TriggerbotEnabled = false,
     TriggerbotHitboxes = {"Head", "HumanoidRootPart"},
     TriggerbotDelay = 0.1,
-    TriggerbotMode = "Hold",
+    TriggerbotMode = "Always",
     TriggerbotKey = Enum.UserInputType.MouseButton2,
     TriggerbotTeamCheck = false,
     TriggerbotWallCheck = false,
@@ -71,7 +71,6 @@ VasGG.Options = {
     TriggerbotCondition = nil,  -- function(player) -> boolean
 }
 
--- ===== UTILITY FUNCTIONS (unchanged) =====
 local function newDrawing(class, props)
     local obj = Drawing.new(class)
     for k, v in pairs(props) do
