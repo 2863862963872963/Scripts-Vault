@@ -503,7 +503,12 @@ function VasGG.AimbotStep()
     local targetPos = targetPart.Position
     local camCF = cam.CFrame
     local goalCF = CFrame.new(camCF.Position, targetPos)
-    cam.CFrame = camCF:Lerp(goalCF, opt.AimSmoothness)
+    
+    if opt.AimSmoothness <= 0 then
+        cam.CFrame = goalCF
+    else
+        cam.CFrame = camCF:Lerp(goalCF, opt.AimSmoothness)
+    end
 end
 
 function VasGG.InitAimbot()
